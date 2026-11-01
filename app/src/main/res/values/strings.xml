@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ebb</string>
+    <string name="watcher_description">Lets Ebb see which app is open so it can time your sessions.</string>
+</resources>
