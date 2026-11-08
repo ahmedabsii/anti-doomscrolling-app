@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -69,8 +70,12 @@ object EbbColors {
 
 /** The only text sizes in the app. */
 object EbbType {
-    /** The saying on the cover screens, the first thing the eye should land on. */
-    val Quote = TextStyle(fontSize = 34.sp, lineHeight = 1.24.em, fontWeight = FontWeight.Normal)
+    /** The saying on the cover screens: a book-like serif against the app's sans, at one of two fixed sizes. */
+    val Quote = TextStyle(fontFamily = FontFamily.Serif, fontSize = 28.sp, lineHeight = 1.3.em, fontWeight = FontWeight.Normal)
+    val QuoteLong = Quote.copy(fontSize = 23.sp)
+
+    /** The time left in a cooldown, with even-width digits so it doesn't jitter as it counts. */
+    val Countdown = TextStyle(fontSize = 40.sp, lineHeight = 46.sp, fontWeight = FontWeight.Light, fontFeatureSettings = "tnum")
     val Hero = TextStyle(fontSize = 46.sp, lineHeight = 52.sp, fontWeight = FontWeight.Light)
     val Number = TextStyle(fontSize = 52.sp, lineHeight = 60.sp, fontWeight = FontWeight.Light)
     val Headline = TextStyle(fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Light)

@@ -473,7 +473,7 @@ private fun GroupEditorScreen(groupId: Long?, onDone: () -> Unit) {
                             Row(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text("Keep Instagram chats free", color = EbbColors.Text, style = EbbType.Title)
-                                    Text("Chats never use your session", color = EbbColors.Muted, style = EbbType.Caption)
+                                    Text("Chats don't use your session, and stay open in a cooldown", color = EbbColors.Muted, style = EbbType.Caption)
                                 }
                                 Switch(checked = keepChats, onCheckedChange = { if (!locked) keepChats = it }, colors = ebbSwitchColors())
                             }

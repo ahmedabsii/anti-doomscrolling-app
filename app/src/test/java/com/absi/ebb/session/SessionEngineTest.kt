@@ -397,4 +397,26 @@ class SessionEngineTest {
         assertEquals(emptyList<SessionAction>(), restored.onForeground(INSTAGRAM, now = 13 * MIN))
         assertEquals(listOf(ShowBlocked(SOCIAL, INSTAGRAM, 40 * MIN)), restored.onTimerDue(now = 14 * MIN))
     }
+
+    @Test
+    fun `free screens stay open during a cooldown, and leaving them brings the block back`() {
+        engine.onForeground(INSTAGRAM, now = 0)
+        engine.onTimerDue(now = 10 * MIN)
+
+        val inChats = engine.onForeground(INSTAGRAM, exempt = true, now = 12 * MIN)
+        val leftChats = engine.onForeground(INSTAGRAM, exempt = false, now = 13 * MIN)
+
+        assertEquals(emptyList<SessionAction>(), inChats)
+        assertEquals(listOf(ShowBlocked(SOCIAL, INSTAGRAM, 40 * MIN)), leftChats)
+    }
+
+    @Test
+    fun `time on a free screen never uses the session`() {
+        engine.onForeground(INSTAGRAM, now = 0)
+        engine.onForeground(INSTAGRAM, exempt = true, now = 2 * MIN)
+        engine.onForeground(INSTAGRAM, exempt = false, now = 30 * MIN)
+        engine.onTimerDue(now = 31 * MIN)
+
+        assertEquals(3 * MIN, used())
+    }
 }

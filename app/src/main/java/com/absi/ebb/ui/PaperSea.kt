@@ -45,6 +45,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.absi.ebb.cooldown.breathLevel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
@@ -64,6 +65,7 @@ private const val SWAY_ROOM = 60f
 // The sea moves slowly enough that thirty frames a second looks smooth and saves battery.
 private const val FRAME_MS = 33L
 private const val FRAME_SLACK_MS = 4L
+private const val WAVE_SPEED = 4.0
 private const val MAX_CACHE_BYTES = 80 * 1024 * 1024
 private const val FADE_IN_MS = 450
 
@@ -112,7 +114,7 @@ enum class Sea(
     val boat: SeaBoat? = null,
     val shadow: Float = 0.6f,
 ) {
-    DAWN(DAWN_SKY, seaSheets(10), 0.55f, 0.95f, 7f, 38f, 40f, 1f, 0f, SeaDisc(0.8f, 0.535f, 34f, EbbColors.Sand), SeaBoat(3, 0.24f)),
+    DAWN(DAWN_SKY, seaSheets(10), 0.6f, 0.95f, 7f, 38f, 40f, 1f, 0f, SeaDisc(0.8f, 0.585f, 34f, EbbColors.Sand), SeaBoat(3, 0.24f)),
     NIGHT(DUSK_SKY, nightSheets(7), 0.68f, 0.95f, 6f, 26f, 14f, 0.55f, 2f, SeaDisc(0.86f, 0.655f, 16f, MOON), SeaBoat(2, 0.3f)),
     MORNING(DAWN_SKY, seaSheets(8), 0.15f, 0.43f, 5f, 24f, 12f, 0.7f, 1f, SeaDisc(0.74f, 0.15f, 24f, EbbColors.Sand), SeaBoat(3, 0.3f)),
     WELCOME(DAWN_SKY, seaSheets(9), 0.42f, 0.93f, 7f, 38f, 30f, 1f, 5f, SeaDisc(0.52f, 0.41f, 62f, EbbColors.Sand), SeaBoat(3, 0.36f)),
@@ -195,6 +197,8 @@ private class SeaArt(
 
     fun draw(canvas: Canvas, viewWidth: Float, timeMs: Long) {
         val t = timeMs / 1000.0
+        // The sheets sway on their own, faster clock. The tide keeps the breath's own 4 s in, 6 s out.
+        val w = t * WAVE_SPEED
         val breath = if (sea.motion > 0f) breathLevel(timeMs) else 0.3f
         val motion = sea.motion
         canvas.save()
@@ -207,14 +211,14 @@ private class SeaArt(
         val last = sheets.lastIndex.coerceAtLeast(1)
         sheets.forEachIndexed { index, sheet ->
             val depth = index.toFloat() / last
-            val swayX = sin(t * (0.17 + 0.05 * (index % 3)) + index * 1.7).toFloat() * (7f + depth * 30f) * motion
-            val swayY = sin(t * 0.42 + index * 0.9).toFloat() * (1f + depth * 3f) * motion +
+            val swayX = sin(w * (0.17 + 0.05 * (index % 3)) + index * 1.7).toFloat() * (7f + depth * 30f) * motion
+            val swayY = sin(w * 0.42 + index * 0.9).toFloat() * (1f + depth * 3f) * motion +
                 (0.5f - breath) * sea.rise * (0.25f + 0.75f * depth)
-            val tilt = sin(t * 0.2 + index * 1.3).toFloat() * 0.2f * motion
+            val tilt = sin(w * 0.2 + index * 1.3).toFloat() * 0.2f * motion
             canvas.place(sheet.bitmap, PAGE_WIDTH / 2 + swayX, sheet.top + swayY, tilt, shiftX = -(PAGE_WIDTH / 2 + SIDE_MARGIN))
             if (index == sea.boat?.sheet) {
-                val bob = sin(t * 0.8).toFloat() * 1.8f
-                val roll = sin(t * 0.6).toFloat() * 3.4f
+                val bob = sin(w * 0.8).toFloat() * 1.8f
+                val roll = sin(w * 0.6).toFloat() * 3.4f
                 canvas.place(boat!!, PAGE_WIDTH * sea.boat.x + swayX * 0.6f, boatRest + swayY + bob + 22f, roll, -40f, -34f)
             }
         }
@@ -353,6 +357,12 @@ private object SeaCache : LruCache<String, SeaArt>(MAX_CACHE_BYTES) {
     fun keyFor(sea: Sea, screen: IntSize) = "${sea.name}:${screen.width}x${screen.height}"
 }
 
+/**
+ * Lets go of every cut scene. Called when Ebb leaves the screen: the art is the bulk of Ebb's memory,
+ * and some phones kill memory-heavy background apps, which would stop the watcher with it.
+ */
+fun releaseSeaArt() = SeaCache.evictAll()
+
 /** The paper sea behind a screen. Only the frame clock changes, so nothing recomposes as it moves. */
 @Composable
 fun PaperSea(sea: Sea, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
@@ -376,10 +386,21 @@ private fun SeaLayer(sea: Sea) {
     val clock = remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
 
-    LaunchedEffect(key) {
-        if (art == null && screen.width > 0) {
-            art = withContext(Dispatchers.Default) { cutScene(sea, screen).also { it.prepare(); SeaCache.put(key, it) } }
-            fade.animateTo(1f, tween(FADE_IN_MS))
+    LaunchedEffect(key, lifecycle) {
+        if (screen.width <= 0) return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            if (art == null) {
+                val cached = SeaCache[key]
+                if (cached == null) fade.snapTo(0f)
+                art = cached ?: withContext(Dispatchers.Default) { cutScene(sea, screen).also { it.prepare(); SeaCache.put(key, it) } }
+                fade.animateTo(1f, tween(FADE_IN_MS))
+            }
+            // A hidden screen holds no art, so the memory can go once Ebb is out of sight.
+            try {
+                awaitCancellation()
+            } finally {
+                art = null
+            }
         }
     }
     LaunchedEffect(sea, lifecycle) {

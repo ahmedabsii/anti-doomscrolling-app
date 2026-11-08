@@ -17,11 +17,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private const val MAX_VOLUME = 0.7f
-private const val FADE_IN_MS = 3_000L
+// Kept low on purpose: the sound should sit in the background, never fill the room.
+private const val MAX_VOLUME = 0.16f
+// Starts at half volume so it is heard from the first second, then rises gently to the full level.
+private const val START_LEVEL = 0.5f
+private const val FADE_IN_MS = 12_000L
 private const val FADE_OUT_MS = 900L
 private const val FADE_STEP_MS = 50L
-private const val EMPTY_BREATH_LEVEL = 0.55f
+private const val EMPTY_BREATH_LEVEL = 0.8f
 
 /** Plays one looped sound while the cooldown screen is showing, and only then. */
 class CooldownSound(private val context: Context) {
@@ -79,8 +82,9 @@ class CooldownSound(private val context: Context) {
         val startedAt = SystemClock.elapsedRealtime()
         while (true) {
             val now = SystemClock.elapsedRealtime()
-            val fadeIn = ((now - startedAt).toFloat() / FADE_IN_MS).coerceAtMost(1f)
-            volume = MAX_VOLUME * fadeIn * (EMPTY_BREATH_LEVEL + (1f - EMPTY_BREATH_LEVEL) * breathLevel(now))
+            val progress = ((now - startedAt).toFloat() / FADE_IN_MS).coerceAtMost(1f)
+            val rise = START_LEVEL + (1f - START_LEVEL) * (1f - (1f - progress) * (1f - progress))
+            volume = MAX_VOLUME * rise * (EMPTY_BREATH_LEVEL + (1f - EMPTY_BREATH_LEVEL) * breathLevel(now))
             player.setVolume(volume, volume)
             delay(FADE_STEP_MS)
         }

@@ -10,10 +10,12 @@ import android.content.IntentFilter
 import android.graphics.Path
 import android.graphics.Rect
 import android.media.AudioManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -55,6 +57,10 @@ class AppWatcherService : AccessibilityService() {
         closeBlockedFloatingWindow()
         watchFloatingWindows()
     }
+    private var chatsShown: Boolean? = null
+    private var arrivedInInstagram = false
+    private var sentToChatsAt = 0L
+    private val instagramCheck = Runnable { checkInstagram() }
 
     private val wake = Runnable { step { it.onTimerDue(now()) } }
     private val modeWatcher by lazy {
@@ -107,9 +113,24 @@ class AppWatcherService : AccessibilityService() {
         // A window change while the phone is unlocked proves it's in use, even if a broadcast was missed.
         if (!screenInUse && !isLocked() && isPowered()) phoneInUse()
         if (packageName == foreground || !isFullApp(packageName)) return
+        // Apps behind the screen send this too, such as the launcher refreshing while another app is open.
+        // Only the window in front counts, or the open app would look closed and run untimed.
+        val front = rootInActiveWindow?.packageName?.toString()
+        if (front != null && front != packageName) {
+            Log.i(TAG, "ignored $packageName behind $front")
+            return
+        }
         foreground = packageName
         if (packageName != this.packageName && packageName != homePackage) lastRealApp = packageName
         Log.i(TAG, "foreground=$packageName")
+        handler.removeCallbacks(instagramCheck)
+        chatsShown = null
+        if (keepsChatsFree(packageName)) {
+            // Decided once Instagram has drawn its screen, so a chat opened from a notification stays free.
+            arrivedInInstagram = true
+            handler.postDelayed(instagramCheck, ARRIVAL_SETTLE_MS)
+            return
+        }
         step { it.onForeground(packageName, now = now()) }
     }
 
@@ -118,6 +139,7 @@ class AppWatcherService : AccessibilityService() {
     override fun onDestroy() {
         handler.removeCallbacks(wake)
         handler.removeCallbacks(floatingCheck)
+        handler.removeCallbacks(instagramCheck)
         scope.cancel()
         runCatching { unregisterReceiver(screenEvents) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audio.removeOnModeChangedListener(modeWatcher)
@@ -140,6 +162,9 @@ class AppWatcherService : AccessibilityService() {
         }
         handle(actions)
         afterStep()
+        chatsShown = null
+        handler.removeCallbacks(instagramCheck)
+        if (keepsChatsFree(foreground)) handler.post(instagramCheck)
     }
 
     private fun reloadGroups() {
@@ -172,8 +197,7 @@ class AppWatcherService : AccessibilityService() {
                         startActivity(CooldownActivity.soothing(this, action.groupId, action.endsAt))
                     }
                 }
-                is SessionAction.ShowBlocked ->
-                    startActivity(CooldownActivity.blocked(this, action.groupId, action.packageName, action.endsAt))
+                is SessionAction.ShowBlocked -> showBlocked(action)
             }
         }
     }
@@ -190,6 +214,50 @@ class AppWatcherService : AccessibilityService() {
             (time + SAVE_INTERVAL_MS).takeIf { current.isRunning },
         ).minOrNull() ?: return
         handler.postDelayed(wake, (next - time).coerceAtLeast(MIN_WAKE_MS))
+    }
+
+    private fun showBlocked(action: SessionAction.ShowBlocked) {
+        val chatsOpen = keepsChatsFree(action.packageName)
+        // Opening Instagram during a cooldown goes straight to the chats. Leaving them later shows the cover.
+        val justSent = SystemClock.elapsedRealtime() - sentToChatsAt < SEND_TO_CHATS_GRACE_MS
+        if (chatsOpen && arrivedInInstagram && !justSent && openInstagramChats()) {
+            sentToChatsAt = SystemClock.elapsedRealtime()
+            // Checked again on the next look, so a link Instagram ignores still ends at the cover.
+            chatsShown = null
+            return
+        }
+        startActivity(CooldownActivity.blocked(this, action.groupId, action.packageName, action.endsAt, chatsOpen))
+    }
+
+    private fun openInstagramChats(): Boolean = runCatching {
+        startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(InstagramScreens.CHATS_LINK))
+                .setPackage(InstagramScreens.PACKAGE)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        Log.i(TAG, "sent to instagram chats")
+    }.isSuccess
+
+    private fun keepsChatsFree(packageName: String?): Boolean =
+        packageName == InstagramScreens.PACKAGE && groups.any { it.keepChatsFree && packageName in it.packages }
+
+    /** Looks at Instagram's screen while it's open, and tells the engine when chats start or stop. */
+    private fun checkInstagram() {
+        if (foreground != InstagramScreens.PACKAGE || !screenInUse) return
+        val root = rootInActiveWindow
+        // A system dialog or the notification shade can be on top. Nothing changes until Instagram is back.
+        if (root?.packageName == InstagramScreens.PACKAGE) {
+            val inChats = InstagramScreens.isChats { root.findAccessibilityNodeInfosByViewId(InstagramScreens.viewId(it)).isNotEmpty() }
+            // Just sent to the chats: the feed can still be showing while the inbox loads, so wait for it.
+            val waitingForChats = !inChats && SystemClock.elapsedRealtime() - sentToChatsAt < SEND_TO_CHATS_GRACE_MS
+            if (inChats != chatsShown && !waitingForChats) {
+                chatsShown = inChats
+                Log.i(TAG, "instagram chats=$inChats")
+                step { it.onForeground(InstagramScreens.PACKAGE, exempt = inChats, now = now()) }
+            }
+            arrivedInInstagram = false
+        }
+        handler.postDelayed(instagramCheck, INSTAGRAM_CHECK_MS)
     }
 
     /** Spends today's token, if it's still there, to open a cooling group for a short while. */
@@ -256,6 +324,8 @@ class AppWatcherService : AccessibilityService() {
     private fun setScreen(inUse: Boolean) {
         screenInUse = inUse
         step { it.onScreen(inUse, now()) }
+        handler.removeCallbacks(instagramCheck)
+        if (inUse && keepsChatsFree(foreground)) handler.post(instagramCheck)
     }
 
     private fun phoneInUse() {
@@ -324,5 +394,8 @@ class AppWatcherService : AccessibilityService() {
         const val MIN_WAKE_MS = 50L
         const val FLOATING_CHECK_MS = 1_000L
         const val SWIPE_AWAY_MS = 350L
+        const val ARRIVAL_SETTLE_MS = 350L
+        const val INSTAGRAM_CHECK_MS = 700L
+        const val SEND_TO_CHATS_GRACE_MS = 3_000L
     }
 }

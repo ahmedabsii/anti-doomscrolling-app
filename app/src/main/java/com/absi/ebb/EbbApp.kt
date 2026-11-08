@@ -12,6 +12,7 @@ import com.absi.ebb.data.InstalledApps
 import com.absi.ebb.progress.ProgressRules
 import com.absi.ebb.session.GroupState
 import com.absi.ebb.session.StableClock
+import com.absi.ebb.ui.releaseSeaArt
 import com.absi.ebb.watcher.AppWatcherService
 import com.absi.ebb.watcher.SessionNotifications
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -32,6 +33,12 @@ class EbbApp : Application() {
         settings = EbbSettings(this)
         apps = InstalledApps(this)
         SessionNotifications.createChannels(this)
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // Out of sight, Ebb keeps only its small watcher. A lean background app is less likely to be killed.
+        if (level >= TRIM_MEMORY_UI_HIDDEN) releaseSeaArt()
     }
 
     /** The timeline session rules run on, which phone clock changes can't move. */
