@@ -121,7 +121,7 @@ class CooldownActivity : ComponentActivity() {
         val message = BlockMessages.pick(BlockMessages.load(this), ebb.settings.lastBlockMessage)
         ebb.settings.lastBlockMessage = message.text
         return if (blockedApp == null) {
-            CoverScreen.Soothing(groupId, group?.name ?: "Your group", endsAt, group?.sound ?: CooldownSoundChoice.OCEAN, message)
+            CoverScreen.Soothing(groupId, group?.name ?: "Your group", endsAt, group?.sound ?: CooldownSoundChoice.RIVER, message)
         } else {
             CoverScreen.Blocked(groupId, blockedApp, ebb.apps.label(blockedApp), endsAt, message)
         }
@@ -204,7 +204,8 @@ private fun Modifier.swipeUp(enabled: Boolean, onSwipe: () -> Unit) = pointerInp
 
 private const val SWIPE_DISTANCE_PX = 140f
 private const val CLOSE_AFTER_MS = 15_000L
-private const val QUOTE_ARRIVAL_MS = 1_400
+private const val QUOTE_ARRIVAL_MS = 700
+private val QUOTE_RISE = 28.dp
 private const val GLOW_STEP_MS = 100L
 private const val CONFIRM_MS = 4_000L
 private val SWIPE_HINT_SPACE = 64.dp
@@ -278,12 +279,13 @@ private fun CoverMessage(message: BlockMessage, modifier: Modifier = Modifier) {
             .fillMaxWidth()
             .drawBehind {
                 val radius = size.maxDimension * 0.6f
-                val light = EbbColors.Mist.copy(alpha = (0.07f + 0.09f * glow) * arrival.value)
+                val light = EbbColors.Mist.copy(alpha = (0.1f + 0.16f * glow) * arrival.value)
                 drawCircle(Brush.radialGradient(listOf(light, Color.Transparent), center, radius), radius)
             }
             .graphicsLayer {
                 alpha = arrival.value
-                val scale = 0.94f + 0.06f * arrival.value
+                val scale = 0.88f + 0.12f * arrival.value
+                translationY = QUOTE_RISE.toPx() * (1f - arrival.value)
                 scaleX = scale
                 scaleY = scale
             },

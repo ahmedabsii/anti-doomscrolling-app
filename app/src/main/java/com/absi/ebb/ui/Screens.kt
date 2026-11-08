@@ -384,7 +384,7 @@ private fun GroupEditorScreen(groupId: Long?, onDone: () -> Unit) {
     var sessionMinutes by remember { mutableStateOf(((existing?.sessionMs ?: (10 * MINUTE_MS)) / MINUTE_MS).toFloat()) }
     var cooldownMinutes by remember { mutableStateOf(((existing?.cooldownMs ?: (30 * MINUTE_MS)) / MINUTE_MS).toFloat()) }
     var resetBreakMinutes by remember { mutableStateOf(existing?.resetBreakMs?.let { (it / MINUTE_MS).toFloat() }) }
-    var sound by remember { mutableStateOf(existing?.sound ?: CooldownSoundChoice.OCEAN) }
+    var sound by remember { mutableStateOf(existing?.sound ?: CooldownSoundChoice.RIVER) }
     var keepChats by remember { mutableStateOf(existing?.keepChatsFree ?: true) }
     var query by remember { mutableStateOf("") }
     val picked = remember { mutableStateSetOf<String>().apply { addAll(existing?.packages.orEmpty()) } }

@@ -13,10 +13,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 enum class CooldownSoundChoice(val label: String) {
-    OCEAN("Ocean"),
+    RIVER("River"),
     RAIN("Rain"),
     PIANO("Classical piano"),
     SILENT("Silent"),
+    ;
+
+    companion object {
+        /** Groups saved with a sound that no longer exists, such as the old ocean, get the river. */
+        fun stored(name: String): CooldownSoundChoice = entries.firstOrNull { it.name == name } ?: RIVER
+    }
 }
 
 data class Group(
@@ -24,7 +30,7 @@ data class Group(
     val name: String,
     val sessionMs: Long,
     val cooldownMs: Long,
-    val sound: CooldownSoundChoice = CooldownSoundChoice.OCEAN,
+    val sound: CooldownSoundChoice = CooldownSoundChoice.RIVER,
     val keepChatsFree: Boolean = true,
     val packages: Set<String>,
     val resetBreakMs: Long? = null,
@@ -89,7 +95,7 @@ class EbbStore(context: Context) : SQLiteOpenHelper(context, "ebb.db", null, 3) 
                 name = it.getString(1),
                 sessionMs = it.getLong(2),
                 cooldownMs = it.getLong(3),
-                sound = CooldownSoundChoice.valueOf(it.getString(4)),
+                sound = CooldownSoundChoice.stored(it.getString(4)),
                 keepChatsFree = it.getInt(5) == 1,
                 packages = members[it.getLong(0)].orEmpty(),
                 resetBreakMs = if (it.isNull(6)) null else it.getLong(6),

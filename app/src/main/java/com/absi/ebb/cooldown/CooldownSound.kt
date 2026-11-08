@@ -3,9 +3,8 @@ package com.absi.ebb.cooldown
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
-import android.media.AudioFormat
 import android.media.AudioManager
-import android.media.AudioTrack
+import android.media.MediaPlayer
 import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.RawRes
@@ -17,11 +16,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
-private const val SAMPLE_RATE = 22_050
-private const val WAV_HEADER_BYTES = 44
 private const val MAX_VOLUME = 0.7f
 private const val FADE_IN_MS = 3_000L
 private const val FADE_OUT_MS = 900L
@@ -39,7 +34,7 @@ class CooldownSound(private val context: Context) {
         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
         .build()
     private var focus: AudioFocusRequest? = null
-    private var track: AudioTrack? = null
+    private var track: MediaPlayer? = null
     private var fade: Job? = null
     private var volume = 0f
 
@@ -50,23 +45,15 @@ class CooldownSound(private val context: Context) {
         val granted = audio.requestAudioFocus(request)
         Log.i(TAG, "audio focus result=$granted sound=$choice")
         val sound = rawFor(choice) ?: return
-        val samples = load(sound)
-        val player = AudioTrack.Builder()
-            .setAudioAttributes(attributes)
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(SAMPLE_RATE)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build(),
-            )
-            .setBufferSizeInBytes(samples.size * Short.SIZE_BYTES)
-            .setTransferMode(AudioTrack.MODE_STATIC)
-            .build()
-        player.write(samples, 0, samples.size)
-        player.setLoopPoints(0, samples.size, -1)
-        player.setVolume(0f)
-        player.play()
+        val player = MediaPlayer()
+        player.setAudioAttributes(attributes)
+        context.resources.openRawResourceFd(sound).use { player.setDataSource(it.fileDescriptor, it.startOffset, it.length) }
+        player.isLooping = true
+        player.setVolume(0f, 0f)
+        player.prepare()
+        // The river loop is exactly ten breaths long, so starting here keeps its swells in step with the tide on screen.
+        player.seekTo(SystemClock.elapsedRealtime().mod(player.duration.toLong()), MediaPlayer.SEEK_CLOSEST)
+        player.start()
         track = player
         fade = scope.launch { followBreath(player) }
     }
@@ -88,38 +75,29 @@ class CooldownSound(private val context: Context) {
     }
 
     /** Swells with the breath shown on screen, so the sound and the tide rise together. */
-    private suspend fun followBreath(player: AudioTrack) {
+    private suspend fun followBreath(player: MediaPlayer) {
         val startedAt = SystemClock.elapsedRealtime()
         while (true) {
             val now = SystemClock.elapsedRealtime()
             val fadeIn = ((now - startedAt).toFloat() / FADE_IN_MS).coerceAtMost(1f)
             volume = MAX_VOLUME * fadeIn * (EMPTY_BREATH_LEVEL + (1f - EMPTY_BREATH_LEVEL) * breathLevel(now))
-            player.setVolume(volume)
+            player.setVolume(volume, volume)
             delay(FADE_STEP_MS)
         }
     }
 
-    private suspend fun ramp(player: AudioTrack, from: Float, to: Float, durationMs: Long) {
+    private suspend fun ramp(player: MediaPlayer, from: Float, to: Float, durationMs: Long) {
         val steps = (durationMs / FADE_STEP_MS).toInt()
         for (step in 1..steps) {
-            player.setVolume(from + (to - from) * step / steps)
+            val level = from + (to - from) * step / steps
+            player.setVolume(level, level)
             delay(FADE_STEP_MS)
         }
-    }
-
-    private fun load(@RawRes sound: Int): ShortArray {
-        val bytes = context.resources.openRawResource(sound).use { it.readBytes() }
-        val samples = ShortArray((bytes.size - WAV_HEADER_BYTES) / Short.SIZE_BYTES)
-        ByteBuffer.wrap(bytes, WAV_HEADER_BYTES, samples.size * Short.SIZE_BYTES)
-            .order(ByteOrder.LITTLE_ENDIAN)
-            .asShortBuffer()
-            .get(samples)
-        return samples
     }
 
     @RawRes
     private fun rawFor(choice: CooldownSoundChoice): Int? = when (choice) {
-        CooldownSoundChoice.OCEAN -> R.raw.sound_ocean
+        CooldownSoundChoice.RIVER -> R.raw.sound_river
         CooldownSoundChoice.RAIN -> R.raw.sound_rain
         CooldownSoundChoice.PIANO -> R.raw.sound_piano
         CooldownSoundChoice.SILENT -> null
