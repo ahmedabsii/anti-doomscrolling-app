@@ -158,7 +158,8 @@ class AppWatcherService : AccessibilityService() {
         val actions = buildList {
             if (!screenInUse) addAll(fresh.onScreen(false, time))
             if (isInCall()) addAll(fresh.onCall(true, time))
-            addAll(fresh.onForeground(foreground, now = time))
+            // Instagram waits for the first look at its screen, so a chat open when the watcher starts stays free.
+            addAll(fresh.onForeground(foreground?.takeUnless(::keepsChatsFree), now = time))
         }
         handle(actions)
         afterStep()
@@ -247,7 +248,10 @@ class AppWatcherService : AccessibilityService() {
         val root = rootInActiveWindow
         // A system dialog or the notification shade can be on top. Nothing changes until Instagram is back.
         if (root?.packageName == InstagramScreens.PACKAGE) {
-            val inChats = InstagramScreens.isChats { root.findAccessibilityNodeInfosByViewId(InstagramScreens.viewId(it)).isNotEmpty() }
+            // Instagram keeps its other tabs loaded beside the one showing, so only views on screen count.
+            val inChats = InstagramScreens.isChats { id ->
+                root.findAccessibilityNodeInfosByViewId(InstagramScreens.viewId(id)).any(AccessibilityNodeInfo::isVisibleToUser)
+            }
             // Just sent to the chats: the feed can still be showing while the inbox loads, so wait for it.
             val waitingForChats = !inChats && SystemClock.elapsedRealtime() - sentToChatsAt < SEND_TO_CHATS_GRACE_MS
             if (inChats != chatsShown && !waitingForChats) {
