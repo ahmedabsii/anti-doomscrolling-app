@@ -62,12 +62,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -162,19 +159,12 @@ private fun WelcomeScreen(onNext: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(56.dp))
-            Text(
-                buildAnnotatedString {
-                    append("Let it ")
-                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append("ebb") }
-                },
-                color = EbbColors.Text,
-                style = EbbType.Hero,
-            )
+            Text("lull", color = EbbColors.Text, style = EbbType.Hero, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
-            Text("Less scroll. More sea.", color = EbbColors.Soft, style = EbbType.Body)
+            Text("The quiet between waves.", color = EbbColors.Soft, style = EbbType.Body)
             Spacer(Modifier.weight(1f))
             Text(
-                "Ebb times your sessions, then lets the feed drift out with the tide until you're ready to come back.",
+                "Lull times your sessions, then lets the feed drift out with the tide until you're ready to come back.",
                 color = EbbColors.Text,
                 style = EbbType.Body,
                 textAlign = TextAlign.Center,
@@ -198,16 +188,16 @@ private fun PermissionScreen(onDone: () -> Unit) {
             Text("One permission keeps your sessions honest", color = EbbColors.Text, style = EbbType.Headline)
             PaperCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("What Ebb sees", color = EbbColors.Text, style = EbbType.Title)
+                    Text("What Lull sees", color = EbbColors.Text, style = EbbType.Title)
                     Text(
-                        "Ebb uses Android's Accessibility service to see which app is open, so it can time sessions " +
+                        "Lull uses Android's Accessibility service to see which app is open, so it can time sessions " +
                             "and cover an app when your time is up. For Instagram, it also checks which screen is " +
                             "open so your chats can stay free.",
                         color = EbbColors.Soft,
                         style = EbbType.Body,
                     )
                     Text(
-                        "It never reads or saves your messages. Your data stays on this phone, and Ebb has no " +
+                        "It never reads or saves your messages. Your data stays on this phone, and Lull has no " +
                             "internet access.",
                         color = EbbColors.Soft,
                         style = EbbType.Body,
@@ -215,7 +205,7 @@ private fun PermissionScreen(onDone: () -> Unit) {
                 }
             }
             PaperCard(Modifier.fillMaxWidth()) {
-                SettingRow("I agree, turn on Ebb", "Opens Android settings. Find Ebb and switch it on.") {
+                SettingRow("I agree, turn on Lull", "Opens Android settings. Find Lull and switch it on.") {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
                     }
@@ -309,7 +299,7 @@ private fun HomeScreen(onOpenGroup: (Long?) -> Unit, onProgress: () -> Unit, tab
 
     TabbedScreen(Sea.MORNING, Tab.GROUPS, tabs) { scroll ->
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("ebb", color = EbbColors.Text, style = EbbType.Value, fontWeight = FontWeight.SemiBold)
+            Text("lull", color = EbbColors.Text, style = EbbType.Value, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
             Box(Modifier.size(44.dp).clickable { onOpenGroup(null) }, contentAlignment = Alignment.Center) {
                 EbbIcon(Glyph.PLUS, EbbColors.Text, 26.dp)
@@ -317,7 +307,7 @@ private fun HomeScreen(onOpenGroup: (Long?) -> Unit, onProgress: () -> Unit, tab
         }
         if (!watcherOn) {
             PaperCard(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                SettingRow("Ebb is switched off", "Blocking won't work until you turn it back on.") {
+                SettingRow("Lull is switched off", "Blocking won't work until you turn it back on.") {
                     context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 }
             }
