@@ -9,10 +9,12 @@ import android.text.TextUtils
 import com.absi.ebb.data.EbbSettings
 import com.absi.ebb.data.EbbStore
 import com.absi.ebb.data.InstalledApps
+import com.absi.ebb.progress.ProgressRules
 import com.absi.ebb.session.GroupState
 import com.absi.ebb.session.StableClock
 import com.absi.ebb.watcher.AppWatcherService
 import com.absi.ebb.watcher.SessionNotifications
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.TimeZone
 
@@ -41,12 +43,26 @@ class EbbApp : Application() {
         return StableClock.now(anchor, elapsed)
     }
 
+    /** One emergency token a day, back at local midnight. The stable clock keeps clock changes from bringing it back early. */
+    fun hasEmergencyToken(): Boolean = settings.emergencyTokenDay != tokenDay()
+
+    fun useEmergencyToken(): Boolean {
+        if (!hasEmergencyToken()) return false
+        settings.emergencyTokenDay = tokenDay()
+        return true
+    }
+
+    private fun tokenDay(): Long = ProgressRules.dayOf(stableNow(), zoneOffsetMs())
+
     fun zoneOffsetMs(): Long = TimeZone.getDefault().getOffset(System.currentTimeMillis()).toLong()
 }
 
 /** The latest session state, shared from the watcher to any open screen. */
 object LiveSession {
     val states = MutableStateFlow<Map<Long, GroupState>>(emptyMap())
+
+    /** Groups a cover screen asks the watcher to open with today's emergency token. */
+    val emergencyRequests = MutableSharedFlow<Long>(extraBufferCapacity = 1)
 }
 
 val Context.ebb: EbbApp get() = applicationContext as EbbApp

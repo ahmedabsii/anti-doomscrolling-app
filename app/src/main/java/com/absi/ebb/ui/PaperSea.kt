@@ -67,18 +67,21 @@ private const val FRAME_SLACK_MS = 4L
 private const val MAX_CACHE_BYTES = 80 * 1024 * 1024
 private const val FADE_IN_MS = 450
 
-private val DAWN_SKY = listOf(EbbColors.Foam, lerp(EbbColors.Foam, EbbColors.Mist, 0.25f), lerp(EbbColors.Foam, EbbColors.Mist, 0.45f))
+// Every sky is dark, with a faint lift at the horizon so the water still reads as distance.
+private val DAWN_SKY = listOf(lerp(EbbColors.Night, Color.Black, 0.4f), EbbColors.Night, lerp(EbbColors.Deep, EbbColors.Sea, 0.3f))
+private val WIN_SKY = listOf(lerp(EbbColors.Night, Color.Black, 0.4f), EbbColors.Night, lerp(EbbColors.Deep, EbbColors.Sand, 0.28f))
+private val MOON = lerp(EbbColors.Sand, EbbColors.Mist, 0.5f)
 private val DUSK_SKY = listOf(lerp(EbbColors.Night, Color.Black, 0.45f), lerp(EbbColors.Night, Color.Black, 0.25f), lerp(EbbColors.Night, EbbColors.Deep, 0.3f))
 
 private val SEA_STOPS = listOf(
-    0f to lerp(EbbColors.Foam, EbbColors.Mist, 0.45f),
-    0.22f to EbbColors.Mist,
-    0.6f to EbbColors.Sea,
-    0.85f to EbbColors.Deep,
-    1f to EbbColors.Night,
+    0f to lerp(EbbColors.Sea, EbbColors.Mist, 0.18f),
+    0.3f to EbbColors.Sea,
+    0.65f to EbbColors.Deep,
+    0.88f to EbbColors.Night,
+    1f to lerp(EbbColors.Night, Color.Black, 0.35f),
 )
 
-/** Colours from the pale far water to the near-black front sheet, all from one family. */
+/** Colours from the lit far water to the near-black front sheet, all from one family. */
 private fun seaSheets(count: Int): List<Color> = List(count) { index ->
     val at = index.toFloat() / (count - 1)
     val end = SEA_STOPS.indexOfFirst { it.first >= at }.coerceAtLeast(1)
@@ -91,7 +94,7 @@ private fun nightSheets(count: Int): List<Color> = List(count) { index ->
     lerp(lerp(EbbColors.Deep, EbbColors.Sea, 0.12f), lerp(EbbColors.Night, Color.Black, 0.3f), index.toFloat() / (count - 1))
 }
 
-class SeaDisc(val x: Float, val y: Float, val radius: Float, val color: Color, val night: Boolean = false)
+class SeaDisc(val x: Float, val y: Float, val radius: Float, val color: Color)
 
 class SeaBoat(val sheet: Int, val x: Float)
 
@@ -107,20 +110,19 @@ enum class Sea(
     val seed: Float,
     val disc: SeaDisc? = null,
     val boat: SeaBoat? = null,
-    val lightSky: Boolean = true,
-    val shadow: Float = 0.46f,
+    val shadow: Float = 0.6f,
 ) {
-    DAWN(DAWN_SKY, seaSheets(11), 0.4f, 0.93f, 7f, 40f, 44f, 1f, 0f, SeaDisc(0.34f, 0.385f, 46f, EbbColors.Sand), SeaBoat(4, 0.8f)),
-    NIGHT(DUSK_SKY, nightSheets(7), 0.68f, 0.95f, 6f, 26f, 14f, 0.55f, 2f, SeaDisc(0.76f, 0.08f, 20f, EbbColors.Foam, night = true), SeaBoat(2, 0.3f), lightSky = false, shadow = 0.6f),
+    DAWN(DAWN_SKY, seaSheets(10), 0.55f, 0.95f, 7f, 38f, 40f, 1f, 0f, SeaDisc(0.8f, 0.535f, 34f, EbbColors.Sand), SeaBoat(3, 0.24f)),
+    NIGHT(DUSK_SKY, nightSheets(7), 0.68f, 0.95f, 6f, 26f, 14f, 0.55f, 2f, SeaDisc(0.86f, 0.655f, 16f, MOON), SeaBoat(2, 0.3f)),
     MORNING(DAWN_SKY, seaSheets(8), 0.15f, 0.43f, 5f, 24f, 12f, 0.7f, 1f, SeaDisc(0.74f, 0.15f, 24f, EbbColors.Sand), SeaBoat(3, 0.3f)),
     WELCOME(DAWN_SKY, seaSheets(9), 0.42f, 0.93f, 7f, 38f, 30f, 1f, 5f, SeaDisc(0.52f, 0.41f, 62f, EbbColors.Sand), SeaBoat(3, 0.36f)),
     WIN(
-        listOf(EbbColors.Foam, lerp(EbbColors.Foam, EbbColors.Sand, 0.55f), EbbColors.Sand),
-        seaSheets(11).mapIndexed { index, color -> lerp(color, EbbColors.Sand, (0.75f - index * 0.25f).coerceAtLeast(0f)) },
-        0.42f, 0.93f, 7f, 40f, 30f, 0.9f, 3f, SeaDisc(0.5f, 0.4f, 72f, EbbColors.Foam), SeaBoat(4, 0.5f),
+        WIN_SKY,
+        seaSheets(11).mapIndexed { index, color -> lerp(color, EbbColors.Sand, (0.3f - index * 0.1f).coerceAtLeast(0f)) },
+        0.42f, 0.93f, 7f, 40f, 30f, 0.9f, 3f, SeaDisc(0.5f, 0.4f, 72f, EbbColors.Sand), SeaBoat(4, 0.5f),
     ),
     LOW_TIDE(DAWN_SKY, seaSheets(5), 0.84f, 0.96f, 6f, 18f, 10f, 0.6f, 4f),
-    DUSK(DUSK_SKY, nightSheets(3), 0.9f, 0.97f, 5f, 14f, 0f, 0f, 6f, lightSky = false, shadow = 0.6f),
+    DUSK(DUSK_SKY, nightSheets(3), 0.9f, 0.97f, 5f, 14f, 0f, 0f, 6f),
     ;
 
     /** Stands in for the art while it's cut, with the same light and dark areas so text stays readable. */
@@ -254,14 +256,14 @@ private fun cutSheet(color: Color, wave: Float, seed: Float, crestLine: Float, b
     paint.setShadowLayer(22f * pixels, 0f, -9f * pixels, Color(0xFF040E14).copy(alpha = shadow).toArgb())
     canvas.drawPath(outline, paint)
     paint.clearShadowLayer()
-    paint.color = lerp(color, Color.White, 0.2f).toArgb()
+    paint.color = lerp(color, EbbColors.Mist, 0.2f).toArgb()
     canvas.save()
     canvas.translate(0f, -1.6f * pixels)
     canvas.drawPath(outline, paint)
     canvas.restore()
     paint.shader = LinearGradient(
         0f, (pad - wave) * pixels, 0f, (pad + wave + band) * pixels,
-        intArrayOf(lerp(color, Color.White, 0.17f).toArgb(), color.toArgb(), lerp(color, Color.Black, 0.34f).toArgb()),
+        intArrayOf(lerp(color, EbbColors.Mist, 0.17f).toArgb(), color.toArgb(), lerp(color, Color.Black, 0.34f).toArgb()),
         floatArrayOf(0f, 0.3f, 1f),
         Shader.TileMode.CLAMP,
     )
@@ -276,16 +278,10 @@ private fun cutDisc(spot: SeaDisc, pixels: Float): Bitmap {
     val canvas = Canvas(bitmap)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     for (ring in 2 downTo 0) {
-        paint.color = when {
-            ring == 0 -> spot.color
-            spot.night -> EbbColors.Foam.copy(alpha = 0.08f / ring)
-            else -> Color.White.copy(alpha = 0.4f / ring)
-        }.toArgb()
-        val shade = if (spot.night) Color.Black.copy(alpha = 0.5f) else EbbColors.Sea.copy(alpha = 0.22f)
-        paint.setShadowLayer(12f * pixels, 0f, 0f, shade.toArgb())
+        // On a dark sky the rings are a faint warm glow, not cut shadows.
+        paint.color = if (ring == 0) spot.color.toArgb() else spot.color.copy(alpha = 0.07f / ring).toArgb()
         canvas.drawCircle(middle, middle, spot.radius * (1f + 0.34f * ring) * pixels, paint)
     }
-    paint.clearShadowLayer()
     canvas.paperGrain(bitmap.width, bitmap.height)
     return bitmap
 }
@@ -304,12 +300,12 @@ private fun cutBoat(pixels: Float): Bitmap {
         paint.color = color.toArgb()
         canvas.drawPath(path, paint)
     }
-    paint.setShadowLayer(3.5f * pixels, 0f, 1.5f * pixels, EbbColors.Night.copy(alpha = 0.35f).toArgb())
-    fold(EbbColors.Foam, 29f, 3f, 29f, 22f, 15f, 22f)
-    fold(lerp(EbbColors.Foam, EbbColors.Mist, 0.45f), 29f, 3f, 43f, 22f, 29f, 22f)
+    paint.setShadowLayer(3.5f * pixels, 0f, 1.5f * pixels, Color.Black.copy(alpha = 0.5f).toArgb())
+    fold(EbbColors.Mist, 29f, 3f, 29f, 22f, 15f, 22f)
+    fold(lerp(EbbColors.Mist, EbbColors.Sea, 0.45f), 29f, 3f, 43f, 22f, 29f, 22f)
     paint.clearShadowLayer()
-    fold(lerp(EbbColors.Foam, EbbColors.Mist, 0.2f), 4f, 20f, 29f, 20f, 29f, 34f, 13f, 34f)
-    fold(lerp(EbbColors.Foam, EbbColors.Mist, 0.7f), 29f, 20f, 54f, 20f, 45f, 34f, 29f, 34f)
+    fold(lerp(EbbColors.Mist, EbbColors.Sea, 0.2f), 4f, 20f, 29f, 20f, 29f, 34f, 13f, 34f)
+    fold(lerp(EbbColors.Mist, EbbColors.Sea, 0.7f), 29f, 20f, 54f, 20f, 45f, 34f, 29f, 34f)
     return bitmap
 }
 
@@ -363,7 +359,7 @@ fun PaperSea(sea: Sea, modifier: Modifier = Modifier, content: @Composable BoxSc
     val activity = LocalActivity.current
     val view = LocalView.current
     SideEffect {
-        activity?.window?.let { WindowCompat.getInsetsController(it, view).isAppearanceLightStatusBars = sea.lightSky }
+        activity?.window?.let { WindowCompat.getInsetsController(it, view).isAppearanceLightStatusBars = false }
     }
     Box(modifier.fillMaxSize().background(sea.backdrop)) {
         SeaLayer(sea)

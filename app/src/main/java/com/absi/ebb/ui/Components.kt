@@ -46,11 +46,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.absi.ebb.ebb
 import kotlin.math.round
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /** The only colours in the app: one sea family and one warm accent, used sparingly. */
 object EbbColors {
@@ -59,7 +58,6 @@ object EbbColors {
     val Sea = Color(0xFF366576)
     val Deep = Color(0xFF17333F)
     val Night = Color(0xFF0A202A)
-    val Ink = Color(0xFF17303A)
     val Sand = Color(0xFFF1DDB8)
 
     val Text = Foam
@@ -71,6 +69,8 @@ object EbbColors {
 
 /** The only text sizes in the app. */
 object EbbType {
+    /** The saying on the cover screens, the first thing the eye should land on. */
+    val Quote = TextStyle(fontSize = 34.sp, lineHeight = 1.24.em, fontWeight = FontWeight.Normal)
     val Hero = TextStyle(fontSize = 46.sp, lineHeight = 52.sp, fontWeight = FontWeight.Light)
     val Number = TextStyle(fontSize = 52.sp, lineHeight = 60.sp, fontWeight = FontWeight.Light)
     val Headline = TextStyle(fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Light)
@@ -138,9 +138,7 @@ fun StatStrip(stats: List<Pair<String, String>>) {
 @Composable
 fun AppIcon(packageName: String, modifier: Modifier = Modifier) {
     val apps = LocalContext.current.ebb.apps
-    val icon by produceState(apps.cachedIcon(packageName), packageName) {
-        value = withContext(Dispatchers.IO) { apps.icon(packageName) }
-    }
+    val icon by produceState(apps.cachedIcon(packageName), packageName) { value = apps.icon(packageName) }
     icon?.let { Image(it, contentDescription = null, modifier = modifier) }
         ?: Box(modifier.background(EbbColors.Fill))
 }
@@ -192,7 +190,7 @@ fun Shore(streakDays: Int, modifier: Modifier = Modifier) {
             val color = when {
                 index >= lit -> EbbColors.Line
                 index == lit - 1 -> EbbColors.Sand
-                else -> EbbColors.Foam
+                else -> EbbColors.Mist
             }
             translate(gap * index + (gap - 20.dp.toPx()) / 2, 8.dp.toPx()) {
                 scale(unit, pivot = Offset.Zero) { drawPath(boat, color) }
@@ -254,7 +252,7 @@ fun EbbSlider(
         val line = 4.dp.toPx()
         drawLine(EbbColors.Line, Offset(knob, middle), Offset(size.width - knob, middle), line, StrokeCap.Round)
         drawLine(EbbColors.Mist, Offset(knob, middle), Offset(x, middle), line, StrokeCap.Round)
-        drawCircle(EbbColors.Foam, knob, Offset(x, middle))
+        drawCircle(EbbColors.Mist, knob, Offset(x, middle))
     }
 }
 

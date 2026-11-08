@@ -1,6 +1,9 @@
 package com.absi.ebb.session
 
-private const val WARNING_LEAD_MS = 60_000L
+private const val WARNING_LEAD_MS = 120_000L
+
+/** How long an emergency token opens a cooling group. */
+const val EMERGENCY_MS = 120_000L
 
 private data class RunningUse(val groupId: Long, val packageName: String, val since: Long)
 
@@ -35,6 +38,19 @@ class SessionEngine(
 
     fun onTimerDue(now: Long): List<SessionAction> = update(now, coverBlocked = false) {}
 
+    /** Whether an emergency token could open this group right now. */
+    fun canOpenForEmergency(groupId: Long, now: Long): Boolean {
+        val state = state(groupId)
+        return (state.cooldownEndsAt ?: 0) > now && state.emergencyEndsAt == null
+    }
+
+    /** Opens a cooling group for [EMERGENCY_MS]. The cooldown keeps its end time. */
+    fun onEmergency(groupId: Long, now: Long): List<SessionAction> = update(now) {
+        if (canOpenForEmergency(groupId, now)) states[groupId] = state(groupId).copy(emergencyEndsAt = now + EMERGENCY_MS)
+    }
+
+    fun isOpenForEmergency(groupId: Long, now: Long): Boolean = (state(groupId).emergencyEndsAt ?: 0) > now
+
     fun state(groupId: Long): GroupState = states[groupId] ?: GroupState()
 
     fun states(): Map<Long, GroupState> = states.toMap()
@@ -59,11 +75,12 @@ class SessionEngine(
     ): List<SessionAction> = buildList {
         recordRunningUse(now)
         endCooldowns(now)
+        val reclosed = endEmergencies(now)
         refillRestedGroups(now)
         change()
         warnNearTheEnd()
         val kicked = startDueCooldowns(now)
-        applyForeground(now, coverBlocked && kicked.isEmpty())
+        applyForeground(now, coverBlocked && kicked.isEmpty(), reclosed)
     }
 
     private fun MutableList<SessionAction>.recordRunningUse(now: Long) {
@@ -81,6 +98,12 @@ class SessionEngine(
             states[id] = GroupState()
             add(SessionAction.CooldownEnded(id))
         }
+    }
+
+    private fun endEmergencies(now: Long): Set<Long> {
+        val over = states.filterValues { it.emergencyEndsAt != null && now >= it.emergencyEndsAt }.keys
+        over.forEach { id -> states[id] = state(id).copy(emergencyEndsAt = null) }
+        return over
     }
 
     private fun refillRestedGroups(now: Long) {
@@ -101,7 +124,7 @@ class SessionEngine(
         val warnAt = rules.sessionMs - WARNING_LEAD_MS
         if (state.warned || warnAt <= 0 || state.usedMs < warnAt || state.usedMs >= rules.sessionMs) return
         states[rules.id] = state.copy(warned = true)
-        add(SessionAction.WarnOneMinute(rules.id))
+        add(SessionAction.WarnTwoMinutes(rules.id))
     }
 
     private fun MutableList<SessionAction>.startDueCooldowns(now: Long): List<GroupRules> {
@@ -118,7 +141,7 @@ class SessionEngine(
         return due
     }
 
-    private fun MutableList<SessionAction>.applyForeground(now: Long, coverBlocked: Boolean) {
+    private fun MutableList<SessionAction>.applyForeground(now: Long, coverBlocked: Boolean, reclosed: Set<Long>) {
         val rules = groupOnScreen()
         val packageName = foregroundPackage
         if (rules == null || packageName == null) {
@@ -128,7 +151,9 @@ class SessionEngine(
         val state = state(rules.id)
         if (state.cooldownEndsAt != null) {
             running = null
-            if (coverBlocked && !inCall) {
+            if (state.emergencyEndsAt != null) return
+            // When an emergency token runs out, the block comes back at once.
+            if ((coverBlocked || rules.id in reclosed) && !inCall) {
                 add(SessionAction.ShowBlocked(rules.id, packageName, state.cooldownEndsAt))
             }
             return
@@ -148,7 +173,7 @@ class SessionEngine(
         val state = state(rules.id)
         val use = running?.takeIf { it.groupId == rules.id }
         return when {
-            state.cooldownEndsAt != null -> state.cooldownEndsAt
+            state.cooldownEndsAt != null -> minOf(state.cooldownEndsAt, state.emergencyEndsAt ?: Long.MAX_VALUE)
             use != null -> runningDeadline(rules, state, use)
             state.usedMs > 0 -> state.lastActiveAt?.plus(rules.resetBreakMs)
             else -> null

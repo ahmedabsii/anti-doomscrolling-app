@@ -47,20 +47,20 @@ object SessionNotifications {
         )
     }
 
-    fun oneMinuteLeft(context: Context, groupId: Long, groupName: String) = post(
+    fun twoMinutesLeft(context: Context, groupId: Long, groupName: String) = post(
         context,
         idFor(groupId),
         CHANNEL_SESSIONS,
-        "1 minute left in $groupName",
-        "Your session ends soon.",
+        "2 minutes left",
+        groupName,
     )
 
-    fun ready(context: Context, groupId: Long, groupName: String) = post(
+    fun cooldownFinished(context: Context, groupId: Long, groupName: String) = post(
         context,
         idFor(groupId),
         CHANNEL_SESSIONS,
-        "$groupName is ready again",
-        "Your cooldown is over.",
+        "Cooldown finished.",
+        groupName,
     )
 
     fun win(context: Context, title: String, text: String, sound: Boolean) {
@@ -93,6 +93,7 @@ object SessionNotifications {
             .setContentTitle(title)
             .setContentText(text)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
             .setContentIntent(tap)
             .build()
         NotificationManagerCompat.from(context).notify(id, notification)

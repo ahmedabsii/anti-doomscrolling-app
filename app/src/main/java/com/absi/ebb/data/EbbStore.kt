@@ -36,7 +36,7 @@ data class Group(
 }
 
 /** Everything Ebb remembers. It stays on the phone, and the app has no internet permission. */
-class EbbStore(context: Context) : SQLiteOpenHelper(context, "ebb.db", null, 2) {
+class EbbStore(context: Context) : SQLiteOpenHelper(context, "ebb.db", null, 3) {
 
     private val _revision = MutableStateFlow(0L)
     private val _groupRevision = MutableStateFlow(0L)
@@ -56,7 +56,7 @@ class EbbStore(context: Context) : SQLiteOpenHelper(context, "ebb.db", null, 2) 
         db.execSQL("CREATE TABLE group_apps(package TEXT PRIMARY KEY, group_id INTEGER NOT NULL)")
         db.execSQL(
             """CREATE TABLE group_state(group_id INTEGER PRIMARY KEY, used_ms INTEGER NOT NULL,
-               last_active INTEGER, cooldown_ends INTEGER, warned INTEGER NOT NULL)""",
+               last_active INTEGER, cooldown_ends INTEGER, warned INTEGER NOT NULL, emergency_ends INTEGER)""",
         )
         db.execSQL(
             """CREATE TABLE daily_usage(day INTEGER NOT NULL, group_id INTEGER NOT NULL,
@@ -71,6 +71,7 @@ class EbbStore(context: Context) : SQLiteOpenHelper(context, "ebb.db", null, 2) 
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) db.execSQL("ALTER TABLE app_groups ADD COLUMN reset_break_ms INTEGER")
+        if (oldVersion < 3) db.execSQL("ALTER TABLE group_state ADD COLUMN emergency_ends INTEGER")
     }
 
     fun groups(): List<Group> {
@@ -147,7 +148,7 @@ class EbbStore(context: Context) : SQLiteOpenHelper(context, "ebb.db", null, 2) 
     fun states(): Map<Long, GroupState> {
         val states = mutableMapOf<Long, GroupState>()
         readableDatabase.rawQuery(
-            "SELECT group_id, used_ms, last_active, cooldown_ends, warned FROM group_state",
+            "SELECT group_id, used_ms, last_active, cooldown_ends, warned, emergency_ends FROM group_state",
             null,
         ).useRows {
             states[it.getLong(0)] = GroupState(
@@ -155,6 +156,7 @@ class EbbStore(context: Context) : SQLiteOpenHelper(context, "ebb.db", null, 2) 
                 lastActiveAt = if (it.isNull(2)) null else it.getLong(2),
                 cooldownEndsAt = if (it.isNull(3)) null else it.getLong(3),
                 warned = it.getInt(4) == 1,
+                emergencyEndsAt = if (it.isNull(5)) null else it.getLong(5),
             )
         }
         return states
@@ -174,6 +176,7 @@ class EbbStore(context: Context) : SQLiteOpenHelper(context, "ebb.db", null, 2) 
                         put("last_active", state.lastActiveAt)
                         put("cooldown_ends", state.cooldownEndsAt)
                         put("warned", if (state.warned) 1 else 0)
+                        put("emergency_ends", state.emergencyEndsAt)
                     },
                 )
             }
@@ -310,6 +313,11 @@ class EbbSettings(context: Context) {
     var lastBlockMessage: String?
         get() = prefs.getString("last_block_message", null)
         set(value) = prefs.edit { putString("last_block_message", value) }
+
+    /** The day today's emergency token was spent, on the stable clock. */
+    var emergencyTokenDay: Long
+        get() = prefs.getLong("emergency_token_day", Long.MIN_VALUE)
+        set(value) = prefs.edit { putLong("emergency_token_day", value) }
 
     var lastReviewDay: Long
         get() = prefs.getLong("last_review_day", Long.MIN_VALUE)

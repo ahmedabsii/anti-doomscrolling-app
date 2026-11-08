@@ -93,6 +93,7 @@ class AppWatcherService : AccessibilityService() {
         }
         loadEngine()
         scope.launch { app.store.groupRevision.drop(1).collect { reloadGroups() } }
+        scope.launch { LiveSession.emergencyRequests.collect(::openForEmergency) }
         reviewYesterday()
     }
 
@@ -161,10 +162,10 @@ class AppWatcherService : AccessibilityService() {
             when (action) {
                 is SessionAction.SessionStarted -> store.addSession(day, action.groupId)
                 is SessionAction.RecordUsage -> store.addUsage(day, action.groupId, action.packageName, action.ms)
-                is SessionAction.WarnOneMinute ->
-                    SessionNotifications.oneMinuteLeft(this, action.groupId, groupName(action.groupId))
+                is SessionAction.WarnTwoMinutes ->
+                    SessionNotifications.twoMinutesLeft(this, action.groupId, groupName(action.groupId))
                 is SessionAction.CooldownEnded ->
-                    SessionNotifications.ready(this, action.groupId, groupName(action.groupId))
+                    SessionNotifications.cooldownFinished(this, action.groupId, groupName(action.groupId))
                 is SessionAction.StartCooldown -> {
                     store.addCooldown(day, action.groupId)
                     if (action.showSoothing) {
@@ -191,10 +192,20 @@ class AppWatcherService : AccessibilityService() {
         handler.postDelayed(wake, (next - time).coerceAtLeast(MIN_WAKE_MS))
     }
 
+    /** Spends today's token, if it's still there, to open a cooling group for a short while. */
+    private fun openForEmergency(groupId: Long) {
+        val current = engine ?: return
+        if (!current.canOpenForEmergency(groupId, now()) || !app.useEmergencyToken()) return
+        Log.i(TAG, "emergency group=$groupId")
+        step { it.onEmergency(groupId, now()) }
+    }
+
     private fun blockedPackages(): Set<String> {
         val current = engine ?: return emptySet()
         val time = now()
-        return groups.filter { (current.state(it.id).cooldownEndsAt ?: 0) > time }.flatMapTo(mutableSetOf()) { it.packages }
+        return groups
+            .filter { (current.state(it.id).cooldownEndsAt ?: 0) > time && !current.isOpenForEmergency(it.id, time) }
+            .flatMapTo(mutableSetOf()) { it.packages }
     }
 
     /** Keeps looking during a cooldown, so a window reopened later is caught too. */

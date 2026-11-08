@@ -15,6 +15,17 @@ android {
         versionName = "0.1.0"
     }
 
+    buildTypes {
+        release {
+            // Compose runs far faster once optimized, which matters most on low-end phones.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            // Signed with the debug key so it installs over the test build. A store release needs its own key.
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
     buildFeatures {
         compose = true
     }

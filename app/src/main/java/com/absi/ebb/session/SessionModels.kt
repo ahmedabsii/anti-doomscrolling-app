@@ -15,11 +15,12 @@ data class GroupState(
     val lastActiveAt: Long? = null,
     val cooldownEndsAt: Long? = null,
     val warned: Boolean = false,
+    val emergencyEndsAt: Long? = null,
 )
 
 sealed interface SessionAction {
     data class SessionStarted(val groupId: Long) : SessionAction
-    data class WarnOneMinute(val groupId: Long) : SessionAction
+    data class WarnTwoMinutes(val groupId: Long) : SessionAction
     data class StartCooldown(
         val groupId: Long,
         val endsAt: Long,

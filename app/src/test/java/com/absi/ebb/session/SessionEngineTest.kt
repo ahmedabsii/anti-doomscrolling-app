@@ -5,7 +5,7 @@ import com.absi.ebb.session.SessionAction.RecordUsage
 import com.absi.ebb.session.SessionAction.SessionStarted
 import com.absi.ebb.session.SessionAction.ShowBlocked
 import com.absi.ebb.session.SessionAction.StartCooldown
-import com.absi.ebb.session.SessionAction.WarnOneMinute
+import com.absi.ebb.session.SessionAction.WarnTwoMinutes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -142,22 +142,25 @@ class SessionEngineTest {
     }
 
     @Test
-    fun `warns once when one minute is left`() {
+    fun `warns once when two minutes are left`() {
         engine.onForeground(INSTAGRAM, now = 0)
 
-        val warning = engine.onTimerDue(now = 9 * MIN).withoutUsage()
-        val later = engine.onTimerDue(now = 9 * MIN + 30_000).withoutUsage()
+        val warning = engine.onTimerDue(now = 8 * MIN).withoutUsage()
+        val later = engine.onTimerDue(now = 9 * MIN).withoutUsage()
+        engine.onForeground(MAPS, now = 9 * MIN)
+        val backAgain = engine.onForeground(INSTAGRAM, now = 9 * MIN + 10_000).withoutUsage()
 
-        assertEquals(listOf(WarnOneMinute(SOCIAL)), warning)
+        assertEquals(listOf(WarnTwoMinutes(SOCIAL)), warning)
         assertEquals(emptyList<SessionAction>(), later)
+        assertEquals(emptyList<SessionAction>(), backAgain)
     }
 
     @Test
-    fun `sessions of a minute or less get no warning`() {
-        val short = SessionEngine(listOf(GroupRules(SOCIAL, MIN, 30 * MIN, setOf(INSTAGRAM))))
+    fun `sessions of two minutes or less get no warning`() {
+        val short = SessionEngine(listOf(GroupRules(SOCIAL, 2 * MIN, 30 * MIN, setOf(INSTAGRAM))))
         short.onForeground(INSTAGRAM, now = 0)
 
-        val actions = short.onTimerDue(now = 30_000).withoutUsage()
+        val actions = short.onTimerDue(now = MIN).withoutUsage()
 
         assertEquals(emptyList<SessionAction>(), actions)
     }
@@ -312,9 +315,9 @@ class SessionEngineTest {
     @Test
     fun `the next deadline is the warning then the kick then the cooldown end`() {
         engine.onForeground(INSTAGRAM, now = 0)
-        assertEquals(9 * MIN, engine.nextDeadline())
+        assertEquals(8 * MIN, engine.nextDeadline())
 
-        engine.onTimerDue(now = 9 * MIN)
+        engine.onTimerDue(now = 8 * MIN)
         assertEquals(10 * MIN, engine.nextDeadline())
 
         engine.onTimerDue(now = 10 * MIN)
@@ -339,5 +342,59 @@ class SessionEngineTest {
         engine.onTimerDue(now = 10 * MIN)
         assertFalse(engine.canEdit(SOCIAL, now = 20 * MIN))
         assertTrue(engine.canEdit(SOCIAL, now = 40 * MIN))
+    }
+
+    @Test
+    fun `an emergency opens a cooling group for two minutes without ending its cooldown`() {
+        engine.onForeground(INSTAGRAM, now = 0)
+        engine.onTimerDue(now = 10 * MIN)
+
+        assertTrue(engine.canOpenForEmergency(SOCIAL, now = 12 * MIN))
+        val opened = engine.onEmergency(SOCIAL, now = 12 * MIN)
+        val inside = engine.onForeground(YOUTUBE, now = 13 * MIN)
+
+        assertEquals(emptyList<SessionAction>(), opened)
+        assertEquals(emptyList<SessionAction>(), inside)
+        assertTrue(engine.isOpenForEmergency(SOCIAL, now = 13 * MIN))
+        assertEquals(40 * MIN, engine.state(SOCIAL).cooldownEndsAt)
+        assertEquals(10 * MIN, used())
+    }
+
+    @Test
+    fun `the block comes back the moment the emergency runs out`() {
+        engine.onForeground(INSTAGRAM, now = 0)
+        engine.onTimerDue(now = 10 * MIN)
+        engine.onEmergency(SOCIAL, now = 12 * MIN)
+        engine.onForeground(INSTAGRAM, now = 12 * MIN)
+
+        assertEquals(12 * MIN + EMERGENCY_MS, engine.nextDeadline())
+        val actions = engine.onTimerDue(now = 12 * MIN + EMERGENCY_MS)
+
+        assertEquals(listOf(ShowBlocked(SOCIAL, INSTAGRAM, 40 * MIN)), actions)
+        assertFalse(engine.isOpenForEmergency(SOCIAL, now = 12 * MIN + EMERGENCY_MS))
+    }
+
+    @Test
+    fun `an emergency only opens a group that is cooling down, and only once at a time`() {
+        assertFalse(engine.canOpenForEmergency(SOCIAL, now = 0))
+        engine.onEmergency(SOCIAL, now = 0)
+        assertFalse(engine.isOpenForEmergency(SOCIAL, now = 0))
+
+        engine.onForeground(INSTAGRAM, now = 0)
+        engine.onTimerDue(now = 10 * MIN)
+        engine.onEmergency(SOCIAL, now = 11 * MIN)
+        assertFalse(engine.canOpenForEmergency(SOCIAL, now = 12 * MIN))
+    }
+
+    @Test
+    fun `an emergency survives a restart`() {
+        engine.onForeground(INSTAGRAM, now = 0)
+        engine.onTimerDue(now = 10 * MIN)
+        engine.onEmergency(SOCIAL, now = 12 * MIN)
+
+        val restored = SessionEngine(listOf(social, news), engine.states())
+
+        assertEquals(emptyList<SessionAction>(), restored.onForeground(INSTAGRAM, now = 13 * MIN))
+        assertEquals(listOf(ShowBlocked(SOCIAL, INSTAGRAM, 40 * MIN)), restored.onTimerDue(now = 14 * MIN))
     }
 }

@@ -52,10 +52,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -66,6 +68,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -164,11 +167,11 @@ private fun WelcomeScreen(onNext: () -> Unit) {
                     append("Let it ")
                     withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append("ebb") }
                 },
-                color = EbbColors.Ink,
+                color = EbbColors.Text,
                 style = EbbType.Hero,
             )
             Spacer(Modifier.height(8.dp))
-            Text("Less scroll. More sea.", color = EbbColors.Ink, style = EbbType.Body)
+            Text("Less scroll. More sea.", color = EbbColors.Soft, style = EbbType.Body)
             Spacer(Modifier.weight(1f))
             Text(
                 "Ebb times your sessions, then lets the feed drift out with the tide until you're ready to come back.",
@@ -306,10 +309,10 @@ private fun HomeScreen(onOpenGroup: (Long?) -> Unit, onProgress: () -> Unit, tab
 
     TabbedScreen(Sea.MORNING, Tab.GROUPS, tabs) { scroll ->
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("ebb", color = EbbColors.Ink, style = EbbType.Value, fontWeight = FontWeight.SemiBold)
+            Text("ebb", color = EbbColors.Text, style = EbbType.Value, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
             Box(Modifier.size(44.dp).clickable { onOpenGroup(null) }, contentAlignment = Alignment.Center) {
-                EbbIcon(Glyph.PLUS, EbbColors.Ink, 26.dp)
+                EbbIcon(Glyph.PLUS, EbbColors.Text, 26.dp)
             }
         }
         if (!watcherOn) {
@@ -320,7 +323,7 @@ private fun HomeScreen(onOpenGroup: (Long?) -> Unit, onProgress: () -> Unit, tab
             }
         }
         Spacer(Modifier.height(seaSpace))
-        // Light text rests on the dark water, so it fades before scrolling carries it up into the sky.
+        // The number fades as scrolling carries it up over the waves, so the two never blur together.
         Column(
             Modifier.fillMaxWidth().clickable(onClick = onProgress)
                 .graphicsLayer { alpha = 1f - (scroll.value / FADE_OVER_SCROLL).coerceIn(0f, 1f) },
@@ -341,6 +344,7 @@ private fun HomeScreen(onOpenGroup: (Long?) -> Unit, onProgress: () -> Unit, tab
                 "Sessions" to sessions.toString(),
                 "Cooldowns" to cooldowns.toString(),
                 "Streak" to if (streak.current == 1) "1 day" else "${streak.current} days",
+                "Token" to if (app.hasEmergencyToken()) "1 left" else "Used",
             ),
         )
         Spacer(Modifier.height(12.dp))
@@ -426,7 +430,7 @@ private fun GroupEditorScreen(groupId: Long?, onDone: () -> Unit) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(start = EDITOR_SIDE, end = EDITOR_SIDE, bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -445,10 +449,20 @@ private fun GroupEditorScreen(groupId: Long?, onDone: () -> Unit) {
                                 TimeSlider("Reset after a break of", resetBreakMinutes ?: (cooldownMinutes * 2), 5f..480f, 5f, locked) { resetBreakMinutes = it }
                             }
                         }
+                    }
+                }
+                // The search stays pinned at the top, so any app is a few letters away without scrolling.
+                stickyHeader(key = "search") {
+                    Box(Modifier.edgeToEdge(EDITOR_SIDE).background(SEARCH_BAND).padding(start = EDITOR_SIDE, end = EDITOR_SIDE, top = 10.dp, bottom = 14.dp)) {
                         EbbField(query, "Search all your apps") { query = it }
                     }
                 }
-                items(shown, key = { it.packageName }) { item ->
+                if (shown.isEmpty() && allApps.isNotEmpty()) {
+                    item(span = { GridItemSpan(4) }) {
+                        Text("No apps match \u201c${query.trim()}\u201d", color = EbbColors.Muted, style = EbbType.Body, textAlign = TextAlign.Center)
+                    }
+                }
+                items(shown, key = { it.packageName }, contentType = { "app" }) { item ->
                     AppTile(item, item.packageName in picked, enabled = !locked) {
                         if (item.packageName in picked) picked -= item.packageName else picked += item.packageName
                     }
@@ -490,10 +504,24 @@ private fun GroupEditorScreen(groupId: Long?, onDone: () -> Unit) {
     }
 }
 
+private val EDITOR_SIDE = 16.dp
+
+// The sky's own shade, solid behind the search and fading at its foot, so apps slide softly under it.
+private val SEARCH_BAND = lerp(EbbColors.Night, Color.Black, 0.4f).let {
+    Brush.verticalGradient(0f to it, 0.8f to it, 1f to Color.Transparent)
+}
+
+/** Reaches past the list's side margins to the screen edges. */
+private fun Modifier.edgeToEdge(margin: Dp) = layout { measurable, constraints ->
+    val extra = margin.roundToPx() * 2
+    val placeable = measurable.measure(constraints.copy(minWidth = constraints.maxWidth + extra, maxWidth = constraints.maxWidth + extra))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-extra / 2, 0) }
+}
+
 @Composable
 private fun ebbSwitchColors() = SwitchDefaults.colors(
     checkedTrackColor = EbbColors.Sea,
-    checkedThumbColor = EbbColors.Foam,
+    checkedThumbColor = EbbColors.Mist,
     uncheckedTrackColor = EbbColors.Night,
     uncheckedThumbColor = EbbColors.Mist,
     uncheckedBorderColor = EbbColors.Mist,
@@ -542,10 +570,10 @@ private fun AppTile(item: InstalledApp, selected: Boolean, enabled: Boolean, onT
             AppIcon(item.packageName, Modifier.size(54.dp).clip(RoundedCornerShape(17.dp)))
             if (selected || item.isProtected) {
                 Box(
-                    Modifier.align(Alignment.BottomEnd).size(22.dp).clip(CircleShape).background(EbbColors.Foam),
+                    Modifier.align(Alignment.BottomEnd).size(22.dp).clip(CircleShape).background(EbbColors.Mist),
                     contentAlignment = Alignment.Center,
                 ) {
-                    EbbIcon(if (selected) Glyph.CHECK else Glyph.LOCK, EbbColors.Ink, 13.dp)
+                    EbbIcon(if (selected) Glyph.CHECK else Glyph.LOCK, EbbColors.Night, 13.dp)
                 }
             }
         }
@@ -573,18 +601,18 @@ private fun ProgressScreen(onCelebrate: () -> Unit, tabs: (Tab) -> Unit) {
 
     TabbedScreen(Sea.LOW_TIDE, Tab.PROGRESS, tabs) {
         Column(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Reclaimed this week", color = EbbColors.Ink, style = EbbType.Caption)
-            Text(hoursMinutes(reclaimed), color = EbbColors.Ink, style = EbbType.Number)
+            Text("Reclaimed this week", color = EbbColors.Soft, style = EbbType.Caption)
+            Text(hoursMinutes(reclaimed), color = EbbColors.Text, style = EbbType.Number)
             Text(
                 if (lastWeekMs == 0L) "Building your first week" else "$percent% less scrolling than last week",
-                color = EbbColors.Ink,
+                color = EbbColors.Soft,
                 style = EbbType.Caption,
             )
         }
         Spacer(Modifier.height(24.dp))
         Row {
-            Text("Time in your groups", color = EbbColors.Ink, style = EbbType.Caption, modifier = Modifier.weight(1f))
-            Text(hoursMinutes(weekMs), color = EbbColors.Ink, style = EbbType.Caption)
+            Text("Time in your groups", color = EbbColors.Soft, style = EbbType.Caption, modifier = Modifier.weight(1f))
+            Text(hoursMinutes(weekMs), color = EbbColors.Soft, style = EbbType.Caption)
         }
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth().height(170.dp), verticalAlignment = Alignment.Bottom) {
@@ -595,10 +623,10 @@ private fun ProgressScreen(onCelebrate: () -> Unit, tabs: (Tab) -> Unit) {
                     Box(
                         Modifier.width(30.dp).height((ms.toFloat() / tallest * 140).dp.coerceAtLeast(6.dp))
                             .shadow(3.dp, shape)
-                            .background(if (isToday) EbbColors.Deep else lerp(EbbColors.Mist, EbbColors.Sea, 0.45f), shape),
+                            .background(if (isToday) EbbColors.Mist else EbbColors.Sea, shape),
                     )
                     Spacer(Modifier.height(7.dp))
-                    Text(dayLetter(week.size - 1 - index), color = EbbColors.Ink, style = EbbType.Caption)
+                    Text(dayLetter(week.size - 1 - index), color = EbbColors.Muted, style = EbbType.Caption)
                 }
             }
         }
@@ -729,8 +757,8 @@ private fun CelebrationScreen(onDone: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(36.dp))
-            Text("Calm waters", color = EbbColors.Ink, style = EbbType.Title)
-            Text("$percent% less", color = EbbColors.Ink, style = EbbType.Number)
+            Text("Calm waters", color = EbbColors.Soft, style = EbbType.Title)
+            Text("$percent% less", color = EbbColors.Text, style = EbbType.Number)
             Spacer(Modifier.weight(1f))
             Text(
                 "${minutesText(used)} yesterday.\nYou reclaimed ${minutesText((usual - used).coerceAtLeast(0))} from the scroll.",

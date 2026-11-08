@@ -8,6 +8,11 @@ import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+private const val ICON_PX = 144
+private const val ICON_CACHE_BYTES = 24 * 1024 * 1024
 
 data class InstalledApp(val packageName: String, val label: String, val isProtected: Boolean)
 
@@ -15,7 +20,12 @@ data class InstalledApp(val packageName: String, val label: String, val isProtec
 class InstalledApps(private val context: Context) {
 
     private val packages: PackageManager = context.packageManager
-    private val icons = LruCache<String, ImageBitmap>(96)
+    private val icons = object : LruCache<String, ImageBitmap>(ICON_CACHE_BYTES) {
+        override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
+    }
+
+    // Two at a time, so a fast scroll on a slow phone can't bury the screen in icon work.
+    private val iconWork = Dispatchers.IO.limitedParallelism(2)
 
     /** The list from the last [load], so screens can show it at once. */
     @Volatile
@@ -41,14 +51,11 @@ class InstalledApps(private val context: Context) {
 
     fun cachedIcon(packageName: String): ImageBitmap? = icons.get(packageName)
 
-    /** Draws the icon if it isn't cached yet. Call it off the main thread. */
-    fun icon(packageName: String): ImageBitmap? {
-        cachedIcon(packageName)?.let { return it }
-        val icon = runCatching {
-            packages.getApplicationIcon(packageName).toBitmap(144, 144).asImageBitmap()
-        }.getOrNull()
-        if (icon != null) icons.put(packageName, icon)
-        return icon
+    /** Draws the icon in the background if it isn't cached yet. */
+    suspend fun icon(packageName: String): ImageBitmap? = cachedIcon(packageName) ?: withContext(iconWork) {
+        cachedIcon(packageName) ?: runCatching {
+            packages.getApplicationIcon(packageName).toBitmap(ICON_PX, ICON_PX).asImageBitmap()
+        }.getOrNull()?.also { icons.put(packageName, it) }
     }
 
     fun homePackage(): String? =
