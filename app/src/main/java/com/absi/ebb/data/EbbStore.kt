@@ -33,12 +33,8 @@ data class Group(
     val sound: CooldownSoundChoice = CooldownSoundChoice.RIVER,
     val keepChatsFree: Boolean = true,
     val packages: Set<String>,
-    val resetBreakMs: Long? = null,
 ) {
-    /** A chosen break, or twice the cooldown when none was chosen. */
-    val effectiveResetBreakMs: Long get() = resetBreakMs ?: (cooldownMs * 2)
-
-    fun rules() = GroupRules(id, sessionMs, cooldownMs, packages, effectiveResetBreakMs)
+    fun rules() = GroupRules(id, sessionMs, cooldownMs, packages)
 }
 
 /** Everything Ebb remembers. It stays on the phone, and the app has no internet permission. */
@@ -54,6 +50,7 @@ class EbbStore(context: Context) : SQLiteOpenHelper(context, "ebb.db", null, 3) 
     val groupRevision: StateFlow<Long> = _groupRevision
 
     override fun onCreate(db: SQLiteDatabase) {
+        // reset_break_ms held a chosen break. It's no longer read: a session now resets after twice the cooldown.
         db.execSQL(
             """CREATE TABLE app_groups(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
                session_ms INTEGER NOT NULL, cooldown_ms INTEGER NOT NULL, sound TEXT NOT NULL,
@@ -87,7 +84,7 @@ class EbbStore(context: Context) : SQLiteOpenHelper(context, "ebb.db", null, 3) 
         }
         val groups = mutableListOf<Group>()
         readableDatabase.rawQuery(
-            "SELECT id, name, session_ms, cooldown_ms, sound, chats_free, reset_break_ms FROM app_groups ORDER BY id",
+            "SELECT id, name, session_ms, cooldown_ms, sound, chats_free FROM app_groups ORDER BY id",
             null,
         ).useRows {
             groups += Group(
@@ -98,7 +95,6 @@ class EbbStore(context: Context) : SQLiteOpenHelper(context, "ebb.db", null, 3) 
                 sound = CooldownSoundChoice.stored(it.getString(4)),
                 keepChatsFree = it.getInt(5) == 1,
                 packages = members[it.getLong(0)].orEmpty(),
-                resetBreakMs = if (it.isNull(6)) null else it.getLong(6),
             )
         }
         return groups
@@ -117,7 +113,6 @@ class EbbStore(context: Context) : SQLiteOpenHelper(context, "ebb.db", null, 3) 
                 put("cooldown_ms", group.cooldownMs)
                 put("sound", group.sound.name)
                 put("chats_free", if (group.keepChatsFree) 1 else 0)
-                put("reset_break_ms", group.resetBreakMs)
             }
             if (id == 0L) {
                 id = db.insertOrThrow("app_groups", null, row)
@@ -265,6 +260,16 @@ class EbbStore(context: Context) : SQLiteOpenHelper(context, "ebb.db", null, 3) 
             it.moveToFirst()
             return it.getInt(0) to it.getInt(1)
         }
+    }
+
+    /** Sessions and cooldowns on each day in the range, with zero for days with none. */
+    fun countsByDay(fromDay: Long, toDay: Long): List<Pair<Int, Int>> {
+        val totals = mutableMapOf<Long, Pair<Int, Int>>()
+        readableDatabase.rawQuery(
+            "SELECT day, SUM(sessions), SUM(cooldowns) FROM daily_counts WHERE day BETWEEN ? AND ? GROUP BY day",
+            arrayOf(fromDay.toString(), toDay.toString()),
+        ).useRows { totals[it.getLong(0)] = it.getInt(1) to it.getInt(2) }
+        return (fromDay..toDay).map { totals[it] ?: (0 to 0) }
     }
 
     fun resetProgress() {

@@ -10,7 +10,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,6 +42,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -57,15 +61,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -81,6 +89,11 @@ import com.absi.ebb.session.GroupState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.util.Locale
+import kotlin.math.roundToInt
 
 private const val MINUTE_MS = 60_000L
 private const val MORNING_SEA_SHARE = 0.34f
@@ -243,6 +256,21 @@ private fun rememberNow(): Long {
     return now
 }
 
+/** Today's day, which moves on at midnight even while the screen stays open. */
+@Composable
+private fun rememberToday(): Long {
+    val app = LocalContext.current.ebb
+    val today by produceState(app.today()) {
+        while (true) {
+            delay(DAY_CHECK_MS)
+            value = app.today()
+        }
+    }
+    return today
+}
+
+private const val DAY_CHECK_MS = 15_000L
+
 private data class GroupStatus(val time: String, val label: String, val color: Color, val water: Float)
 
 private fun statusOf(group: Group, state: GroupState?, now: Long): GroupStatus {
@@ -284,7 +312,7 @@ private fun HomeScreen(onOpenGroup: (Long?) -> Unit, onProgress: () -> Unit, tab
     val now = rememberNow()
     val groups = remember(revision) { app.store.groups() }
     val states = live.ifEmpty { remember(revision) { app.store.states() } }
-    val today = ProgressRules.dayOf(System.currentTimeMillis(), app.zoneOffsetMs())
+    val today = rememberToday()
     val todayMs = remember(revision, today) { app.store.usageByDay(today, today).single() }
     val earlier = remember(revision, today) {
         val first = app.store.firstDay()
@@ -371,9 +399,8 @@ private fun GroupEditorScreen(groupId: Long?, onDone: () -> Unit) {
     val existing = remember(groupId) { groupId?.let(app.store::group) }
     val allApps by produceState(app.apps.known) { value = withContext(Dispatchers.Default) { app.apps.load() } }
     var name by remember { mutableStateOf(existing?.name ?: "") }
-    var sessionMinutes by remember { mutableStateOf(((existing?.sessionMs ?: (10 * MINUTE_MS)) / MINUTE_MS).toFloat()) }
-    var cooldownMinutes by remember { mutableStateOf(((existing?.cooldownMs ?: (30 * MINUTE_MS)) / MINUTE_MS).toFloat()) }
-    var resetBreakMinutes by remember { mutableStateOf(existing?.resetBreakMs?.let { (it / MINUTE_MS).toFloat() }) }
+    var sessionMinutes by remember { mutableStateOf(((existing?.sessionMs ?: (RECOMMENDED_SESSION_MIN * MINUTE_MS)) / MINUTE_MS).toFloat()) }
+    var cooldownMinutes by remember { mutableStateOf(((existing?.cooldownMs ?: (RECOMMENDED_COOLDOWN_MIN * MINUTE_MS)) / MINUTE_MS).toFloat()) }
     var sound by remember { mutableStateOf(existing?.sound ?: CooldownSoundChoice.RIVER) }
     var keepChats by remember { mutableStateOf(existing?.keepChatsFree ?: true) }
     var query by remember { mutableStateOf("") }
@@ -407,7 +434,6 @@ private fun GroupEditorScreen(groupId: Long?, onDone: () -> Unit) {
                                 sound = sound,
                                 keepChatsFree = keepChats,
                                 packages = picked.toSet(),
-                                resetBreakMs = resetBreakMinutes?.let { it.toLong() * MINUTE_MS },
                             ),
                         )
                         onDone()
@@ -432,11 +458,15 @@ private fun GroupEditorScreen(groupId: Long?, onDone: () -> Unit) {
                         EbbField(name, "Group name") { if (!locked) name = it }
                         PaperCard(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
-                                TimeSlider("Session", sessionMinutes, 1f..60f, 1f, locked) { sessionMinutes = it }
+                                TimeSlider("Session", sessionMinutes, 1f..60f, 1f, RECOMMENDED_SESSION_MIN, locked) { sessionMinutes = it }
                                 Spacer(Modifier.height(8.dp))
-                                TimeSlider("Cooldown", cooldownMinutes, 5f..240f, 5f, locked) { cooldownMinutes = it }
-                                Spacer(Modifier.height(8.dp))
-                                TimeSlider("Reset after a break of", resetBreakMinutes ?: (cooldownMinutes * 2), 5f..480f, 5f, locked) { resetBreakMinutes = it }
+                                TimeSlider("Cooldown", cooldownMinutes, 5f..240f, 5f, RECOMMENDED_COOLDOWN_MIN, locked) { cooldownMinutes = it }
+                                // The engine refills a session after a break of twice the cooldown.
+                                Text(
+                                    "Your session resets after ${lengthInWords(cooldownMinutes.toInt() * 2)} away from these apps.",
+                                    color = EbbColors.Muted,
+                                    style = EbbType.Caption,
+                                )
                             }
                         }
                     }
@@ -533,20 +563,36 @@ private fun EbbField(value: String, hint: String, onChange: (String) -> Unit) {
     }
 }
 
+// What Lull suggests to someone new. The sliders mark these, and name them when they're picked.
+private const val RECOMMENDED_SESSION_MIN = 10
+private const val RECOMMENDED_COOLDOWN_MIN = 30
+
+/** A length of time in words, such as "20 min", "1 hour" or "1 h 30 min". */
+private fun lengthInWords(minutes: Int): String = when {
+    minutes < 60 -> "$minutes min"
+    minutes == 60 -> "1 hour"
+    minutes % 60 == 0 -> "${minutes / 60} hours"
+    else -> "${minutes / 60} h ${minutes % 60} min"
+}
+
 @Composable
 private fun TimeSlider(
     label: String,
     minutes: Float,
     range: ClosedFloatingPointRange<Float>,
     step: Float,
+    recommended: Int,
     locked: Boolean,
     onChange: (Float) -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.Bottom) {
-        Text(label, color = EbbColors.Soft, style = EbbType.Body, modifier = Modifier.weight(1f))
-        Text("${minutes.toInt()} min", color = EbbColors.Text, style = EbbType.Value)
+    Row {
+        Text(label, color = EbbColors.Soft, style = EbbType.Body, modifier = Modifier.weight(1f).alignByBaseline())
+        if (minutes.toInt() == recommended) {
+            Text("Recommended", color = EbbColors.Sand, style = EbbType.Caption, modifier = Modifier.padding(end = 10.dp).alignByBaseline())
+        }
+        Text("${minutes.toInt()} min", color = EbbColors.Text, style = EbbType.Value, modifier = Modifier.alignByBaseline())
     }
-    EbbSlider(minutes, range, step, enabled = !locked, onChange = onChange)
+    EbbSlider(minutes, range, step, enabled = !locked, mark = recommended.toFloat(), onChange = onChange)
 }
 
 @Composable
@@ -577,48 +623,56 @@ private fun ProgressScreen(onCelebrate: () -> Unit, tabs: (Tab) -> Unit) {
     val app = LocalContext.current.ebb
     val store = app.store
     val revision by store.revision.collectAsState()
-    val today = ProgressRules.dayOf(System.currentTimeMillis(), app.zoneOffsetMs())
+    val today = rememberToday()
+    // The headline always compares the last seven days with the seven before them.
     val week = remember(revision, today) { store.usageByDay(today - 6, today) }
     val lastWeek = remember(revision, today) { store.usageByDay(today - 13, today - 7) }
-    val byApp = remember(revision, today) { store.usageByApp(today - 6, today) }
-    val previousByApp = remember(revision, today) { store.usageByApp(today - 13, today - 7) }
+    // The bars and the apps list show one week at a time, from this week back to the first recorded day.
+    var weeksBack by remember { mutableStateOf(0) }
+    val firstDay = remember(revision) { store.firstDay() }
+    val oldestWeek = if (firstDay == null) 0 else ((today - firstDay).coerceAtLeast(0) / 7).toInt()
+    val shownEnd = today - 7L * weeksBack
+    val shown = remember(revision, shownEnd) { store.usageByDay(shownEnd - 6, shownEnd) }
+    val shownCounts = remember(revision, shownEnd) { store.countsByDay(shownEnd - 6, shownEnd) }
+    val byApp = remember(revision, shownEnd) { store.usageByApp(shownEnd - 6, shownEnd) }
+    val previousByApp = remember(revision, shownEnd) { store.usageByApp(shownEnd - 13, shownEnd - 7) }
     val streak = remember(revision, today) { ProgressRules.streak(store.winDays(), today - 1) }
     val weekMs = week.sum()
     val lastWeekMs = lastWeek.sum()
     val reclaimed = (lastWeekMs - weekMs).coerceAtLeast(0)
     val percent = ProgressRules.percentLess(weekMs, lastWeekMs)
-    val tallest = (week.maxOrNull() ?: 0).coerceAtLeast(1)
 
     TabbedScreen(Sea.LOW_TIDE, Tab.PROGRESS, tabs) {
         Column(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Reclaimed this week", color = EbbColors.Soft, style = EbbType.Caption)
             Text(hoursMinutes(reclaimed), color = EbbColors.Text, style = EbbType.Number)
             Text(
-                if (lastWeekMs == 0L) "Building your first week" else "$percent% less scrolling than last week",
+                when {
+                    lastWeekMs == 0L -> "Building your first week"
+                    percent >= 0 -> "$percent% less scrolling than last week"
+                    else -> "${-percent}% more scrolling than last week"
+                },
                 color = EbbColors.Soft,
                 style = EbbType.Caption,
             )
         }
-        Spacer(Modifier.height(24.dp))
-        Row {
-            Text("Time in your groups", color = EbbColors.Soft, style = EbbType.Caption, modifier = Modifier.weight(1f))
-            Text(hoursMinutes(weekMs), color = EbbColors.Soft, style = EbbType.Caption)
+        Spacer(Modifier.height(20.dp))
+        // Time runs left to right in every language, so the arrows and bars match where a finger lands.
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            WeekPicker(
+                end = shownEnd,
+                today = today,
+                canGoBack = weeksBack < oldestWeek,
+                canGoForward = weeksBack > 0,
+                onBack = { weeksBack++ },
+                onForward = { weeksBack-- },
+            )
+            DayBars(shown.mapIndexed { index, ms -> DayUse(shownEnd - 6 + index, ms, shownCounts[index].first, shownCounts[index].second) }, today)
         }
-        Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth().height(170.dp), verticalAlignment = Alignment.Bottom) {
-            week.forEachIndexed { index, ms ->
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Bottom, horizontalAlignment = Alignment.CenterHorizontally) {
-                    val isToday = index == week.lastIndex
-                    val shape = RoundedCornerShape(11.dp)
-                    Box(
-                        Modifier.width(30.dp).height((ms.toFloat() / tallest * 140).dp.coerceAtLeast(6.dp))
-                            .shadow(3.dp, shape)
-                            .background(if (isToday) EbbColors.Mist else EbbColors.Sea, shape),
-                    )
-                    Spacer(Modifier.height(7.dp))
-                    Text(dayLetter(week.size - 1 - index), color = EbbColors.Muted, style = EbbType.Caption)
-                }
-            }
+        Spacer(Modifier.height(14.dp))
+        Row {
+            Text("Total in your groups", color = EbbColors.Soft, style = EbbType.Body, modifier = Modifier.weight(1f).alignByBaseline())
+            Text(hoursMinutes(shown.sum()), color = EbbColors.Text, style = EbbType.Value, modifier = Modifier.alignByBaseline())
         }
         Spacer(Modifier.height(18.dp))
         PaperCard(Modifier.fillMaxWidth().clickable(onClick = onCelebrate)) {
@@ -663,12 +717,152 @@ private fun ProgressScreen(onCelebrate: () -> Unit, tabs: (Tab) -> Unit) {
     }
 }
 
-private fun dayLetter(daysAgo: Int): String {
-    val calendar = java.util.Calendar.getInstance()
-    calendar.add(java.util.Calendar.HOUR_OF_DAY, -4)
-    calendar.add(java.util.Calendar.DAY_OF_YEAR, -daysAgo)
-    return "SMTWTFS"[calendar.get(java.util.Calendar.DAY_OF_WEEK) - 1].toString()
+/** The week the bars show, with arrows to older and newer weeks. */
+@Composable
+private fun WeekPicker(end: Long, today: Long, canGoBack: Boolean, canGoForward: Boolean, onBack: () -> Unit, onForward: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        WeekArrow(Glyph.BACK, canGoBack, onBack)
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(weekName(end, today), color = EbbColors.Text, style = EbbType.Title)
+            Text(dateRange(end - 6, end, today), color = EbbColors.Muted, style = EbbType.Caption)
+        }
+        WeekArrow(Glyph.NEXT, canGoForward, onForward)
+    }
 }
+
+@Composable
+private fun WeekArrow(glyph: Glyph, enabled: Boolean, onClick: () -> Unit) {
+    Box(Modifier.size(44.dp).clip(CircleShape).clickable(enabled = enabled, onClick = onClick), contentAlignment = Alignment.Center) {
+        EbbIcon(glyph, if (enabled) EbbColors.Text else EbbColors.Line, 22.dp)
+    }
+}
+
+private fun weekName(end: Long, today: Long): String = when (val weeksBack = (today - end) / 7) {
+    0L -> "This week"
+    1L -> "Last week"
+    else -> "$weeksBack weeks ago"
+}
+
+/** Such as "4 – 10 Nov" or "28 Oct – 3 Nov", with the year when it isn't this year. */
+private fun dateRange(from: Long, to: Long, today: Long): String {
+    val start = LocalDate.ofEpochDay(from)
+    val end = LocalDate.ofEpochDay(to)
+    val startPattern = if (start.month == end.month && start.year == end.year) "d" else "d MMM"
+    val endPattern = if (end.year == LocalDate.ofEpochDay(today).year) "d MMM" else "d MMM yyyy"
+    return "${start.format(DateTimeFormatter.ofPattern(startPattern, Locale.ENGLISH))} – ${end.format(DateTimeFormatter.ofPattern(endPattern, Locale.ENGLISH))}"
+}
+
+/** One day under a bar: its time in the groups, and how many sessions and cooldowns it had. */
+private data class DayUse(val day: Long, val ms: Long, val sessions: Int, val cooldowns: Int)
+
+private val BAR_SHAPE = RoundedCornerShape(11.dp)
+
+// Tall enough for a day's details (three lines) and the gap under them.
+private val DETAILS_LANE = 84.dp
+
+/**
+ * A bar for each day. Holding a bar shows that day's details above it, and sliding along moves them
+ * from day to day. A tap shows or hides one day's details.
+ */
+@Composable
+private fun DayBars(days: List<DayUse>, today: Long) {
+    // The chosen day, kept by date, so it simply isn't shown on another week's bars.
+    var pickedDay by remember { mutableStateOf<Long?>(null) }
+    val picked = days.indexOfFirst { it.day == pickedDay }.takeIf { it >= 0 }
+    val haptics = LocalHapticFeedback.current
+    val tallest = days.maxOf(DayUse::ms).coerceAtLeast(1)
+    fun dayAt(x: Float, width: Int) = days[(x / width * days.size).toInt().coerceIn(0, days.lastIndex)].day
+    fun slideTo(day: Long) {
+        if (day == pickedDay) return
+        pickedDay = day
+        haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+    }
+    // A clear lane above the bars, where a day's details appear without covering anything.
+    Box(Modifier.fillMaxWidth().height(DETAILS_LANE), contentAlignment = Alignment.Center) {
+        if (picked == null) Text("Hold a bar and slide to see each day", color = EbbColors.Muted, style = EbbType.Caption)
+    }
+    Box(
+        // The touch handlers restart with each new week, so they always read the bars on screen.
+        Modifier.fillMaxWidth().height(170.dp)
+            .pointerInput(days) {
+                detectTapGestures { offset ->
+                    val day = dayAt(offset.x, size.width)
+                    pickedDay = if (pickedDay == day) null else day
+                }
+            }
+            // After the hold the slide belongs to the bars, so the screen doesn't scroll under the finger.
+            .pointerInput(days) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { offset ->
+                        pickedDay = dayAt(offset.x, size.width)
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        slideTo(dayAt(change.position.x, size.width))
+                    },
+                )
+            },
+    ) {
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.Bottom) {
+            days.forEachIndexed { index, use ->
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Bottom, horizontalAlignment = Alignment.CenterHorizontally) {
+                    // A thin line runs from the details down to the day they belong to.
+                    if (index == picked) Box(Modifier.width(1.dp).weight(1f).background(EbbColors.Soft))
+                    val color = when {
+                        index == picked -> EbbColors.Sand
+                        use.day == today -> EbbColors.Mist
+                        else -> EbbColors.Sea
+                    }
+                    Box(
+                        Modifier.width(30.dp).height((use.ms.toFloat() / tallest * 140).dp.coerceAtLeast(6.dp))
+                            .alpha(if (picked == null || index == picked) 1f else 0.5f)
+                            .shadow(3.dp, BAR_SHAPE)
+                            .background(color, BAR_SHAPE),
+                    )
+                    Spacer(Modifier.height(7.dp))
+                    Text(dayLetter(use.day), color = if (index == picked) EbbColors.Text else EbbColors.Muted, style = EbbType.Caption)
+                }
+            }
+        }
+        picked?.let { index ->
+            DayDetails(days[index], today, Modifier.above(centreFraction = (index + 0.5f) / days.size))
+        }
+    }
+}
+
+@Composable
+private fun DayDetails(use: DayUse, today: Long, modifier: Modifier) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier.shadow(8.dp, shape).background(EbbColors.Deep, shape).border(0.5.dp, EbbColors.Line, shape)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(dayName(use.day, today), color = EbbColors.Muted, style = EbbType.Caption)
+        Text(hoursMinutes(use.ms), color = EbbColors.Text, style = EbbType.Value)
+        Text("${plural(use.sessions, "session")} · ${plural(use.cooldowns, "cooldown")}", color = EbbColors.Muted, style = EbbType.Caption)
+    }
+}
+
+/** Sits this on its parent's top edge, centred on a point along it but kept inside its width. */
+private fun Modifier.above(centreFraction: Float) = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+    val centre = centreFraction * constraints.maxWidth
+    val x = (centre - placeable.width / 2f).roundToInt().coerceIn(0, (constraints.maxWidth - placeable.width).coerceAtLeast(0))
+    layout(0, 0) { placeable.place(x, -placeable.height) }
+}
+
+private fun plural(count: Int, word: String) = if (count == 1) "1 $word" else "$count ${word}s"
+
+// Lull's words are all English, so its dates are too.
+private fun dayName(day: Long, today: Long): String = when (day) {
+    today -> "Today"
+    today - 1 -> "Yesterday"
+    else -> LocalDate.ofEpochDay(day).format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH))
+}
+
+private fun dayLetter(day: Long): String = LocalDate.ofEpochDay(day).dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.ENGLISH)
 
 @Composable
 private fun SettingsScreen(tabs: (Tab) -> Unit) {
@@ -722,7 +916,7 @@ private fun SettingsScreen(tabs: (Tab) -> Unit) {
 private fun CelebrationScreen(onDone: () -> Unit) {
     val context = LocalContext.current
     val app = context.ebb
-    val today = ProgressRules.dayOf(System.currentTimeMillis(), app.zoneOffsetMs())
+    val today = app.today()
     val yesterday = today - 1
     val used = remember { app.store.usageByDay(yesterday, yesterday).single() }
     val earlier = remember {

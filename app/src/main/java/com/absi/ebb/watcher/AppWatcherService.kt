@@ -73,6 +73,10 @@ class AppWatcherService : AccessibilityService() {
                 Intent.ACTION_SCREEN_OFF -> setScreen(false)
                 Intent.ACTION_SCREEN_ON -> if (!isLocked()) phoneInUse()
                 Intent.ACTION_USER_PRESENT -> phoneInUse()
+                // A day that ends while the phone is in use is looked back on at midnight. When it's locked, the
+                // next unlock does it, so a win never chimes in the night.
+                Intent.ACTION_TIME_TICK, Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED ->
+                    if (screenInUse && !isLocked()) reviewLastDay()
             }
         }
     }
@@ -84,6 +88,9 @@ class AppWatcherService : AccessibilityService() {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_TIME_TICK)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
         }
         // USER_PRESENT comes from System UI rather than the system itself, so a non-exported
         // receiver never gets it. These broadcasts are protected, so other apps can't fake them.
@@ -100,7 +107,8 @@ class AppWatcherService : AccessibilityService() {
         loadEngine()
         scope.launch { app.store.groupRevision.drop(1).collect { reloadGroups() } }
         scope.launch { LiveSession.emergencyRequests.collect(::openForEmergency) }
-        reviewYesterday()
+        // The system can restart the watcher at night, so the look back waits until the phone is in use.
+        if (screenInUse) reviewLastDay()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
@@ -182,7 +190,7 @@ class AppWatcherService : AccessibilityService() {
 
     private fun handle(actions: List<SessionAction>) {
         val store = app.store
-        val day = ProgressRules.dayOf(System.currentTimeMillis(), app.zoneOffsetMs())
+        val day = app.today()
         actions.forEach { action ->
             Log.i(TAG, action.toString())
             when (action) {
@@ -334,7 +342,7 @@ class AppWatcherService : AccessibilityService() {
 
     private fun phoneInUse() {
         setScreen(true)
-        reviewYesterday()
+        reviewLastDay()
     }
 
     private fun isPowered() = getSystemService(PowerManager::class.java).isInteractive
@@ -358,26 +366,25 @@ class AppWatcherService : AccessibilityService() {
 
     private fun groupName(id: Long) = groups.firstOrNull { it.id == id }?.name ?: "Your group"
 
-    private fun reviewYesterday() {
-        val store = app.store
+    /**
+     * Once a new day begins, looks back on the last day the watcher saw and records it if it was calm. Days it
+     * never saw, with the phone off or Lull switched off all day, earn no win. Only yesterday's win is announced.
+     */
+    private fun reviewLastDay() {
         val settings = app.settings
-        val today = ProgressRules.dayOf(System.currentTimeMillis(), app.zoneOffsetMs())
-        if (settings.lastReviewDay == today) return
+        val today = app.today()
+        val lastReview = settings.lastReviewDay
+        if (lastReview == today) return
+        // After a small step back in the clock or time zone, wait for the day to come round, so no day is looked at twice.
+        if (lastReview > today && lastReview - today <= 2) return
         settings.lastReviewDay = today
-        val yesterday = today - 1
-        val first = store.firstDay() ?: return
-        val won = groups.mapNotNull { group ->
-            val earlier = if (first >= yesterday) {
-                emptyList()
-            } else {
-                store.usageByDay(maxOf(first, yesterday - 7), yesterday - 1, group.id)
-            }
-            val used = store.usageByDay(yesterday, yesterday, group.id).single()
-            if (!ProgressRules.isDailyWin(used, earlier)) return@mapNotNull null
-            store.addWin(yesterday, group.id)
-            Triple(group.name, used, ProgressRules.usualMs(earlier))
-        }
-        if (won.isEmpty()) return
+        // A clock that ran far ahead and came back leaves nothing to look back on.
+        if (lastReview > today) return
+        val first = app.store.firstDay() ?: return
+        // Each look happens on a day the watcher saw, so the day of the last look is the one not looked back on yet.
+        val day = if (lastReview == Long.MIN_VALUE) today - 1 else lastReview
+        val won = recordWins(day, first)
+        if (won.isEmpty() || day != today - 1) return
         val used = won.sumOf { it.second }
         val usual = won.sumOf { it.third }
         val percent = ProgressRules.percentLess(used, usual)
@@ -389,6 +396,16 @@ class AppWatcherService : AccessibilityService() {
             "Yesterday: $minutes min on $where, $percent% less than usual.",
             settings.celebrationSounds,
         )
+    }
+
+    /** Records each group's win on [day], and returns each winner's name, time used and usual time. */
+    private fun recordWins(day: Long, firstDay: Long): List<Triple<String, Long, Long>> = groups.mapNotNull { group ->
+        val store = app.store
+        val earlier = if (firstDay >= day) emptyList() else store.usageByDay(maxOf(firstDay, day - 7), day - 1, group.id)
+        val used = store.usageByDay(day, day, group.id).single()
+        if (!ProgressRules.isDailyWin(used, earlier)) return@mapNotNull null
+        store.addWin(day, group.id)
+        Triple(group.name, used, ProgressRules.usualMs(earlier))
     }
 
     private companion object {

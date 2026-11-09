@@ -79,10 +79,11 @@ class CooldownActivity : ComponentActivity() {
         setContent {
             EbbTheme {
                 BackHandler { leave() }
+                // The screens ask about the token each second, so a cover still up at midnight offers the new one.
                 when (val current = screen) {
                     is CoverScreen.Soothing ->
-                        SoothingScreen(current, ebb.settings.soothingSeconds, ebb.hasEmergencyToken(), ::openForEmergency, ::leave)
-                    is CoverScreen.Blocked -> BlockedScreen(current, ebb.hasEmergencyToken(), ::openForEmergency, ::openChats, ::leave)
+                        SoothingScreen(current, ebb.settings.soothingSeconds, ebb::hasEmergencyToken, ::openForEmergency, ::leave)
+                    is CoverScreen.Blocked -> BlockedScreen(current, ebb::hasEmergencyToken, ::openForEmergency, ::openChats, ::leave)
                     null -> Unit
                 }
             }
@@ -232,7 +233,7 @@ private const val SHORT_QUOTE_CHARS = 80
 private fun SoothingScreen(
     screen: CoverScreen.Soothing,
     seconds: Int,
-    tokenLeft: Boolean,
+    tokenLeft: () -> Boolean,
     onEmergency: (Long) -> Unit,
     onLeave: () -> Unit,
 ) {
@@ -272,7 +273,7 @@ private fun SoothingScreen(
             Spacer(Modifier.weight(1.3f))
             Text(if (breathingIn) "Breathe in" else "Breathe out", color = EbbColors.Soft, style = EbbType.Body)
             Spacer(Modifier.height(14.dp))
-            EmergencyToken(tokenLeft) { onEmergency(screen.groupId) }
+            EmergencyToken(tokenLeft()) { onEmergency(screen.groupId) }
         }
         if (canClose) {
             Box(Modifier.align(Alignment.BottomCenter).systemBarsPadding()) { SwipeUpHint("Swipe up to close") }
@@ -381,7 +382,7 @@ private fun EmergencyToken(available: Boolean, onUse: () -> Unit) {
 @Composable
 private fun BlockedScreen(
     screen: CoverScreen.Blocked,
-    tokenLeft: Boolean,
+    tokenLeft: () -> Boolean,
     onEmergency: (Long) -> Unit,
     onChats: () -> Unit,
     onLeave: () -> Unit,
@@ -407,7 +408,7 @@ private fun BlockedScreen(
                 PillButton("Back to chats", onChats)
                 Spacer(Modifier.height(16.dp))
             }
-            EmergencyToken(tokenLeft) { onEmergency(screen.groupId) }
+            EmergencyToken(tokenLeft()) { onEmergency(screen.groupId) }
         }
         Box(Modifier.align(Alignment.BottomCenter).systemBarsPadding()) { SwipeUpHint("Swipe up to leave") }
     }

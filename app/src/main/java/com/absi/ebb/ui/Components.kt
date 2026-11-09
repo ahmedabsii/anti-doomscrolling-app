@@ -233,6 +233,7 @@ fun EbbSlider(
     range: ClosedFloatingPointRange<Float>,
     step: Float,
     enabled: Boolean = true,
+    mark: Float? = null,
     onChange: (Float) -> Unit,
 ) {
     val latest by rememberUpdatedState(onChange)
@@ -257,6 +258,11 @@ fun EbbSlider(
         val line = 4.dp.toPx()
         drawLine(EbbColors.Line, Offset(knob, middle), Offset(size.width - knob, middle), line, StrokeCap.Round)
         drawLine(EbbColors.Mist, Offset(knob, middle), Offset(x, middle), line, StrokeCap.Round)
+        // A small dot shows where a suggested value sits, so it's easy to find again.
+        if (mark != null) {
+            val markX = knob + ((mark - range.start) / span).coerceIn(0f, 1f) * (size.width - knob * 2)
+            drawCircle(EbbColors.Sand, 3.dp.toPx(), Offset(markX, middle))
+        }
         drawCircle(EbbColors.Mist, knob, Offset(x, middle))
     }
 }

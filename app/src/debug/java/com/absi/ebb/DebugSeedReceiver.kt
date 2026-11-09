@@ -5,14 +5,13 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.absi.ebb.data.Group
-import com.absi.ebb.progress.ProgressRules
 
 /** Debug builds only: lets end-to-end tests set up short sessions and past usage over adb. */
 class DebugSeedReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.ebb
-        val today = ProgressRules.dayOf(System.currentTimeMillis(), app.zoneOffsetMs())
+        val today = app.today()
         when (intent.getStringExtra("command")) {
             "group" -> {
                 app.settings.onboarded = true

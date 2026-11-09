@@ -61,6 +61,9 @@ class EbbApp : Application() {
 
     private fun tokenDay(): Long = ProgressRules.dayOf(stableNow(), zoneOffsetMs())
 
+    /** Today by the phone's clock, the day that usage and progress are filed under. */
+    fun today(): Long = ProgressRules.dayOf(System.currentTimeMillis(), zoneOffsetMs())
+
     fun zoneOffsetMs(): Long = TimeZone.getDefault().getOffset(System.currentTimeMillis()).toLong()
 }
 

@@ -6,7 +6,6 @@ import kotlin.math.roundToInt
 object ProgressRules {
 
     private const val DAY_MS = 24 * 60 * 60_000L
-    private const val DAY_START_MS = 4 * 60 * 60_000L
     private const val WINDOW_DAYS = 7
     private const val MIN_HISTORY_DAYS = 3
     private const val MIN_SAVED_MS = 5 * 60_000L
@@ -15,8 +14,9 @@ object ProgressRules {
 
     data class Streak(val current: Int, val best: Int)
 
+    /** The local day, from midnight to midnight. Its number counts days since 1 January 1970, like LocalDate.toEpochDay. */
     fun dayOf(wallMs: Long, zoneOffsetMs: Long): Long =
-        Math.floorDiv(wallMs + zoneOffsetMs - DAY_START_MS, DAY_MS)
+        Math.floorDiv(wallMs + zoneOffsetMs, DAY_MS)
 
     fun usualMs(earlierDays: List<Long>): Long {
         val window = earlierDays.takeLast(WINDOW_DAYS)

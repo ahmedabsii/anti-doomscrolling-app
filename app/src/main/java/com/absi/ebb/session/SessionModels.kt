@@ -6,8 +6,10 @@ data class GroupRules(
     val sessionMs: Long,
     val cooldownMs: Long,
     val packages: Set<String>,
-    val resetBreakMs: Long = cooldownMs * 2,
-)
+) {
+    /** A break this long away from the group's apps refills the session. It's always twice the cooldown. */
+    val resetBreakMs: Long get() = cooldownMs * 2
+}
 
 /** What survives a restart. Times are on the [StableClock] timeline. */
 data class GroupState(

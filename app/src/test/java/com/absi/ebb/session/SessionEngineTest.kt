@@ -83,7 +83,7 @@ class SessionEngineTest {
     }
 
     @Test
-    fun `a break of twice the cooldown resets used time by default`() {
+    fun `a break of twice the cooldown resets used time`() {
         engine.onForeground(INSTAGRAM, now = 0)
         engine.onForeground(MAPS, now = 2 * MIN)
 
@@ -105,13 +105,12 @@ class SessionEngineTest {
     }
 
     @Test
-    fun `a chosen reset break replaces the default`() {
-        val custom = GroupRules(SOCIAL, 10 * MIN, 30 * MIN, setOf(INSTAGRAM), resetBreakMs = 15 * MIN)
-        val shortBreak = SessionEngine(listOf(custom))
-        shortBreak.onForeground(INSTAGRAM, now = 0)
-        shortBreak.onForeground(MAPS, now = 4 * MIN)
+    fun `the reset break follows the cooldown`() {
+        val shortCooldown = SessionEngine(listOf(GroupRules(SOCIAL, 10 * MIN, 15 * MIN, setOf(INSTAGRAM))))
+        shortCooldown.onForeground(INSTAGRAM, now = 0)
+        shortCooldown.onForeground(MAPS, now = 4 * MIN)
 
-        val actions = shortBreak.onForeground(INSTAGRAM, now = 19 * MIN)
+        val actions = shortCooldown.onForeground(INSTAGRAM, now = 34 * MIN)
 
         assertEquals(listOf(SessionStarted(SOCIAL)), actions)
     }

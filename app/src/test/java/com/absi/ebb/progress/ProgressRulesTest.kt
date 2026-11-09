@@ -4,6 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
 
 private const val MIN = 60_000L
 private const val HOUR = 60 * MIN
@@ -12,15 +15,25 @@ private const val DAY = 24 * HOUR
 class ProgressRulesTest {
 
     @Test
-    fun `a day runs from 4 am to 4 am`() {
-        assertEquals(ProgressRules.dayOf(10 * DAY + 4 * HOUR, 0), ProgressRules.dayOf(11 * DAY + 3 * HOUR, 0))
-        assertEquals(ProgressRules.dayOf(10 * DAY + 3 * HOUR, 0) + 1, ProgressRules.dayOf(10 * DAY + 4 * HOUR, 0))
+    fun `a day runs from midnight to midnight`() {
+        assertEquals(ProgressRules.dayOf(10 * DAY, 0), ProgressRules.dayOf(11 * DAY - 1, 0))
+        assertEquals(ProgressRules.dayOf(10 * DAY - 1, 0) + 1, ProgressRules.dayOf(10 * DAY, 0))
     }
 
     @Test
     fun `the day boundary follows the phone's time zone`() {
-        val threeAmLocal = 10 * DAY + 3 * HOUR - 2 * HOUR
-        assertEquals(ProgressRules.dayOf(10 * DAY + 3 * HOUR, 0), ProgressRules.dayOf(threeAmLocal, 2 * HOUR))
+        val oneAmLocal = 10 * DAY + HOUR - 2 * HOUR
+        assertEquals(ProgressRules.dayOf(10 * DAY + HOUR, 0), ProgressRules.dayOf(oneAmLocal, 2 * HOUR))
+    }
+
+    @Test
+    fun `half past midnight is already the new date`() {
+        val zone = ZoneOffset.ofHours(3)
+        val halfPastMidnight = ZonedDateTime.of(2026, 11, 10, 0, 30, 0, 0, zone).toInstant().toEpochMilli()
+
+        val day = ProgressRules.dayOf(halfPastMidnight, 3 * HOUR)
+
+        assertEquals(LocalDate.of(2026, 11, 10), LocalDate.ofEpochDay(day))
     }
 
     @Test
