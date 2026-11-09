@@ -394,7 +394,6 @@ class AppWatcherService : AccessibilityService() {
             this,
             "Calm waters, $percent% less",
             "Yesterday: $minutes min on $where, $percent% less than usual.",
-            settings.celebrationSounds,
         )
     }
 

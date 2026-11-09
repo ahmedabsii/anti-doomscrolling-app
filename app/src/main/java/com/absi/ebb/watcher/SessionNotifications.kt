@@ -20,6 +20,7 @@ object SessionNotifications {
 
     private const val CHANNEL_SESSIONS = "sessions"
     private const val CHANNEL_WINS = "wins"
+    // Made by earlier versions, for wins without the chime.
     private const val CHANNEL_WINS_QUIET = "wins_quiet"
     private const val WIN_ID = 1
 
@@ -40,11 +41,9 @@ object SessionNotifications {
                 NotificationChannel(CHANNEL_WINS, "Wins", NotificationManager.IMPORTANCE_DEFAULT).apply {
                     setSound(chime, attributes)
                 },
-                NotificationChannel(CHANNEL_WINS_QUIET, "Quiet wins", NotificationManager.IMPORTANCE_LOW).apply {
-                    setSound(null, null)
-                },
             ),
         )
+        manager.deleteNotificationChannel(CHANNEL_WINS_QUIET)
     }
 
     fun twoMinutesLeft(context: Context, groupId: Long, groupName: String) = post(
@@ -63,7 +62,7 @@ object SessionNotifications {
         groupName,
     )
 
-    fun win(context: Context, title: String, text: String, sound: Boolean) {
+    fun win(context: Context, title: String, text: String) {
         val open = Intent(context, MainActivity::class.java)
             .putExtra(MainActivity.EXTRA_CELEBRATE, true)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -73,7 +72,7 @@ object SessionNotifications {
             open,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        post(context, WIN_ID, if (sound) CHANNEL_WINS else CHANNEL_WINS_QUIET, title, text, tap)
+        post(context, WIN_ID, CHANNEL_WINS, title, text, tap)
     }
 
     private fun idFor(groupId: Long) = 1000 + groupId.toInt()

@@ -1,9 +1,11 @@
 package com.absi.ebb.ui
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.media.MediaPlayer
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -46,6 +48,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.produceState
@@ -62,8 +65,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -75,10 +78,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.LifecycleStartEffect
 import com.absi.ebb.LiveSession
 import com.absi.ebb.R
+import com.absi.ebb.cooldown.CooldownSound
 import com.absi.ebb.data.CooldownSoundChoice
 import com.absi.ebb.data.Group
 import com.absi.ebb.data.InstalledApp
@@ -86,14 +93,14 @@ import com.absi.ebb.ebb
 import com.absi.ebb.isWatcherEnabled
 import com.absi.ebb.progress.ProgressRules
 import com.absi.ebb.session.GroupState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 private const val MINUTE_MS = 60_000L
 private const val MORNING_SEA_SHARE = 0.34f
@@ -110,6 +117,8 @@ private sealed interface Route {
 @Composable
 fun EbbRoot(celebrate: Boolean) {
     val settings = LocalContext.current.ebb.settings
+    var appSound by remember { mutableStateOf(settings.appSound) }
+    AppSound(appSound)
     var route by remember {
         mutableStateOf<Route>(
             when {
@@ -136,7 +145,14 @@ fun EbbRoot(celebrate: Boolean) {
                     onCelebrate = { route = Route.Celebrate },
                     tabs = { selected -> route = Route.Main(selected) },
                 )
-                Tab.SETTINGS -> SettingsScreen(tabs = { selected -> route = Route.Main(selected) })
+                Tab.SETTINGS -> SettingsScreen(
+                    appSound = appSound,
+                    onAppSound = {
+                        appSound = it
+                        settings.appSound = it
+                    },
+                    tabs = { selected -> route = Route.Main(selected) },
+                )
             }
         }
         is Route.Editor -> {
@@ -147,6 +163,17 @@ fun EbbRoot(celebrate: Boolean) {
             BackHandler { route = Route.Main(Tab.PROGRESS) }
             CelebrationScreen { route = Route.Main(Tab.PROGRESS) }
         }
+    }
+}
+
+/** The river and zen, quietly, while Lull is on screen. It stays silent while other audio is playing. */
+@Composable
+private fun AppSound(on: Boolean) {
+    val context = LocalContext.current
+    val sound = remember { CooldownSound(context.applicationContext) }
+    LifecycleStartEffect(on) {
+        if (on) sound.start(CooldownSoundChoice.RIVER, makesWay = true)
+        onStopOrDispose { sound.stop() }
     }
 }
 
@@ -628,7 +655,7 @@ private fun ProgressScreen(onCelebrate: () -> Unit, tabs: (Tab) -> Unit) {
     val week = remember(revision, today) { store.usageByDay(today - 6, today) }
     val lastWeek = remember(revision, today) { store.usageByDay(today - 13, today - 7) }
     // The bars and the apps list show one week at a time, from this week back to the first recorded day.
-    var weeksBack by remember { mutableStateOf(0) }
+    var weeksBack by remember { mutableIntStateOf(0) }
     val firstDay = remember(revision) { store.firstDay() }
     val oldestWeek = if (firstDay == null) 0 else ((today - firstDay).coerceAtLeast(0) / 7).toInt()
     val shownEnd = today - 7L * weeksBack
@@ -865,49 +892,110 @@ private fun dayName(day: Long, today: Long): String = when (day) {
 private fun dayLetter(day: Long): String = LocalDate.ofEpochDay(day).dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.ENGLISH)
 
 @Composable
-private fun SettingsScreen(tabs: (Tab) -> Unit) {
+private fun SettingsScreen(appSound: Boolean, onAppSound: (Boolean) -> Unit, tabs: (Tab) -> Unit) {
     val context = LocalContext.current
     val app = context.ebb
-    var soothing by remember { mutableStateOf(app.settings.soothingSeconds.toFloat()) }
-    var sounds by remember { mutableStateOf(app.settings.celebrationSounds) }
-    var watcherOn by remember { mutableStateOf(context.isWatcherEnabled()) }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { watcherOn = context.isWatcherEnabled() }
+    // Read again whenever Lull comes back, since each one is changed in Android's own settings.
+    var checks by remember { mutableIntStateOf(0) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { checks++ }
+    val permissions = remember(checks) { permissionsOf(context) }
 
     TabbedScreen(Sea.DUSK, Tab.SETTINGS, tabs) {
         Text("Settings", color = EbbColors.Text, style = EbbType.Headline, modifier = Modifier.padding(top = 18.dp, bottom = 16.dp))
+        Text("Permissions", color = EbbColors.Soft, style = EbbType.Caption, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
         PaperCard(Modifier.fillMaxWidth()) {
-            SettingRow(if (watcherOn) "Blocking is on" else "Blocking is off", "Android accessibility setting") {
-                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            permissions.forEachIndexed { index, permission ->
+                if (index > 0) Divider()
+                PermissionRow(permission) { openSettings(context, permission.settings) }
             }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(20.dp))
+        Text("Sound", color = EbbColors.Soft, style = EbbType.Caption, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
         PaperCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text("Calm screen length", color = EbbColors.Soft, style = EbbType.Body, modifier = Modifier.weight(1f))
-                    Text("${soothing.toInt()} sec", color = EbbColors.Text, style = EbbType.Value)
+            Row(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Sound in Lull", color = EbbColors.Text, style = EbbType.Title)
+                    Text("The river and zen while Lull is open. Cooldown sounds are set in each group.", color = EbbColors.Muted, style = EbbType.Caption)
                 }
-                EbbSlider(soothing, 30f..180f, 10f) {
-                    soothing = it
-                    app.settings.soothingSeconds = it.toInt()
-                }
-            }
-            Divider()
-            Row(Modifier.padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Celebration sounds", color = EbbColors.Text, style = EbbType.Title, modifier = Modifier.weight(1f))
-                Switch(
-                    checked = sounds,
-                    onCheckedChange = {
-                        sounds = it
-                        app.settings.celebrationSounds = it
-                    },
-                    colors = ebbSwitchColors(),
-                )
+                Spacer(Modifier.width(12.dp))
+                Switch(checked = appSound, onCheckedChange = onAppSound, colors = ebbSwitchColors())
             }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(20.dp))
         PaperCard(Modifier.fillMaxWidth()) {
             SettingRow("Reset progress", "Clears your history and boats. Groups stay.") { app.store.resetProgress() }
+        }
+    }
+}
+
+/** One permission Lull needs or works better with. [on] is null where Android can't tell. */
+private data class Permission(val title: String, val detail: String, val on: Boolean?, val settings: Intent)
+
+private fun permissionsOf(context: Context): List<Permission> {
+    val app = "package:${context.packageName}".toUri()
+    val power = context.getSystemService(PowerManager::class.java)
+    val unrestricted = power.isIgnoringBatteryOptimizations(context.packageName)
+    return listOf(
+        Permission(
+            "Blocking",
+            "Required. Lets Lull see which app is open, and cover it when time is up.",
+            context.isWatcherEnabled(),
+            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
+        ),
+        Permission(
+            "Notifications",
+            "For \u201c2 minutes left\u201d and \u201cCooldown finished.\u201d",
+            NotificationManagerCompat.from(context).areNotificationsEnabled(),
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+        ),
+        Permission(
+            "Run in the background",
+            "Stops Android closing Lull to save battery.",
+            unrestricted,
+            // Android only asks while it's off. Once on, the battery list is where it can be changed.
+            if (unrestricted) {
+                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            } else {
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, app)
+            },
+        ),
+        Permission(
+            "Show over other apps",
+            "Helps the cover screen open over any app, straight away.",
+            Settings.canDrawOverlays(context),
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, app),
+        ),
+        Permission(
+            "Auto launch",
+            "Some phones, like realme, close apps anyway. In App info \u203a Battery usage, allow background activity and auto launch.",
+            null,
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, app),
+        ),
+    )
+}
+
+/** Opens the page, or Lull's App info if this phone doesn't have that page. */
+private fun openSettings(context: Context, intent: Intent) {
+    runCatching { context.startActivity(intent) }.onFailure {
+        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri()))
+    }
+}
+
+@Composable
+private fun PermissionRow(permission: Permission, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).heightIn(min = 64.dp).padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(permission.title, color = EbbColors.Text, style = EbbType.Title)
+            Text(permission.detail, color = EbbColors.Muted, style = EbbType.Caption)
+        }
+        Spacer(Modifier.width(12.dp))
+        when (permission.on) {
+            true -> Text("On", color = EbbColors.Mist, style = EbbType.Body)
+            false -> Text("Turn on", color = EbbColors.Sand, style = EbbType.Body)
+            null -> EbbIcon(Glyph.NEXT, EbbColors.Muted, 20.dp)
         }
     }
 }
@@ -927,7 +1015,7 @@ private fun CelebrationScreen(onDone: () -> Unit) {
     val usual = ProgressRules.usualMs(earlier)
     val percent = ProgressRules.percentLess(used, usual).coerceAtLeast(0)
     LaunchedEffect(Unit) {
-        if (app.settings.celebrationSounds && ProgressRules.isDailyWin(used, earlier)) {
+        if (app.settings.appSound && ProgressRules.isDailyWin(used, earlier)) {
             val tone = if (ProgressRules.isMilestone(streak.current)) R.raw.chime_milestone else R.raw.chime_win
             MediaPlayer.create(context, tone)?.apply {
                 setOnCompletionListener { it.release() }

@@ -313,13 +313,10 @@ class EbbSettings(context: Context) {
         get() = prefs.getBoolean("onboarded", false)
         set(value) = prefs.edit { putBoolean("onboarded", value) }
 
-    var soothingSeconds: Int
-        get() = prefs.getInt("soothing_seconds", 60)
-        set(value) = prefs.edit { putInt("soothing_seconds", value) }
-
-    var celebrationSounds: Boolean
-        get() = prefs.getBoolean("celebration_sounds", true)
-        set(value) = prefs.edit { putBoolean("celebration_sounds", value) }
+    /** The river and zen sound while Lull is open, and the chime on the celebration screen. */
+    var appSound: Boolean
+        get() = prefs.getBoolean("app_sound", true)
+        set(value) = prefs.edit { putBoolean("app_sound", value) }
 
     var lastBlockMessage: String?
         get() = prefs.getString("last_block_message", null)

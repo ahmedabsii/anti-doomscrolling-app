@@ -82,7 +82,7 @@ class CooldownActivity : ComponentActivity() {
                 // The screens ask about the token each second, so a cover still up at midnight offers the new one.
                 when (val current = screen) {
                     is CoverScreen.Soothing ->
-                        SoothingScreen(current, ebb.settings.soothingSeconds, ebb::hasEmergencyToken, ::openForEmergency, ::leave)
+                        SoothingScreen(current, ebb::hasEmergencyToken, ::openForEmergency, ::leave)
                     is CoverScreen.Blocked -> BlockedScreen(current, ebb::hasEmergencyToken, ::openForEmergency, ::openChats, ::leave)
                     null -> Unit
                 }
@@ -226,13 +226,14 @@ private const val GLOW_STEP_MS = 100L
 private const val CONFIRM_MS = 4_000L
 private val SWIPE_HINT_SPACE = 64.dp
 private val SIDE = 28.dp
+// How long the calm screen stays after a session ends, before it leaves by itself.
+private const val CALM_SCREEN_MS = 60_000L
 // Sayings up to this length use the larger of the two quote sizes.
 private const val SHORT_QUOTE_CHARS = 80
 
 @Composable
 private fun SoothingScreen(
     screen: CoverScreen.Soothing,
-    seconds: Int,
     tokenLeft: () -> Boolean,
     onEmergency: (Long) -> Unit,
     onLeave: () -> Unit,
@@ -242,7 +243,7 @@ private fun SoothingScreen(
     LaunchedEffect(screen) {
         delay(CLOSE_AFTER_MS)
         canClose = true
-        delay((seconds * 1000L - CLOSE_AFTER_MS).coerceAtLeast(0))
+        delay(CALM_SCREEN_MS - CLOSE_AFTER_MS)
         onLeave()
     }
     val breathingIn by produceState(true) {

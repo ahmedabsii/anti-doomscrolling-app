@@ -26,7 +26,7 @@ private const val FADE_OUT_MS = 900L
 private const val FADE_STEP_MS = 50L
 private const val EMPTY_BREATH_LEVEL = 0.8f
 
-/** Plays one looped sound while the cooldown screen is showing, and only then. */
+/** Plays one looped sound while a cooldown screen is showing, or quietly in the background while Lull is open. */
 class CooldownSound(private val context: Context) {
 
     // Not tied to the screen: closing it must not cancel the fade that stops the sound.
@@ -41,12 +41,19 @@ class CooldownSound(private val context: Context) {
     private var fade: Job? = null
     private var volume = 0f
 
-    fun start(choice: CooldownSoundChoice) {
-        // Taking focus also stops whatever the kicked-out app was playing.
-        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(attributes).build()
-        focus = request
-        val granted = audio.requestAudioFocus(request)
-        Log.i(TAG, "audio focus result=$granted sound=$choice")
+    /**
+     * Starts [choice]. A cover screen takes the audio focus, which also stops whatever the kicked-out app was
+     * playing. Inside Lull the sound [makesWay] instead: it stays silent while other audio is playing.
+     */
+    fun start(choice: CooldownSoundChoice, makesWay: Boolean = false) {
+        if (makesWay) {
+            if (audio.isMusicActive) return
+        } else {
+            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(attributes).build()
+            focus = request
+            val granted = audio.requestAudioFocus(request)
+            Log.i(TAG, "audio focus result=$granted sound=$choice")
+        }
         val sound = rawFor(choice) ?: return
         val player = MediaPlayer()
         player.setAudioAttributes(attributes)
