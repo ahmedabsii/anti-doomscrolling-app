@@ -109,6 +109,7 @@ private const val FADE_OVER_SCROLL = 160f
 private sealed interface Route {
     data object Welcome : Route
     data object Permission : Route
+    data object KeepRunning : Route
     data class Main(val tab: Tab = Tab.GROUPS) : Route
     data class Editor(val groupId: Long?) : Route
     data object Celebrate : Route
@@ -130,7 +131,8 @@ fun EbbRoot(celebrate: Boolean) {
     }
     when (val current = route) {
         Route.Welcome -> WelcomeScreen { route = Route.Permission }
-        Route.Permission -> PermissionScreen {
+        Route.Permission -> PermissionScreen { route = Route.KeepRunning }
+        Route.KeepRunning -> KeepRunningScreen {
             settings.onboarded = true
             route = Route.Main()
         }
@@ -251,6 +253,40 @@ private fun PermissionScreen(onDone: () -> Unit) {
                     }
                     context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 }
+            }
+        }
+    }
+}
+
+/** Setup's second step: the permissions that keep Lull running on phones that save battery hard. */
+@Composable
+private fun KeepRunningScreen(onDone: () -> Unit) {
+    val context = LocalContext.current
+    var checks by remember { mutableIntStateOf(0) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { checks++ }
+    // Blocking is already on by this step, so it's left out.
+    val permissions = remember(checks) { permissionsOf(context).drop(1) }
+    PaperSea(Sea.DUSK) {
+        Column(
+            Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Spacer(Modifier.height(40.dp))
+            Text("Keep Lull running", color = EbbColors.Text, style = EbbType.Headline)
+            Text(
+                "Phones close apps in the background to save battery. Turn these on so Lull keeps timing your " +
+                    "sessions and covers apps on time. You can change them later in Settings.",
+                color = EbbColors.Soft,
+                style = EbbType.Body,
+            )
+            PaperCard(Modifier.fillMaxWidth()) {
+                permissions.forEachIndexed { index, permission ->
+                    if (index > 0) Divider()
+                    PermissionRow(permission) { openSettings(context, permission.settings) }
+                }
+            }
+            PaperCard(Modifier.fillMaxWidth()) {
+                SettingRow("Continue", null, onDone)
             }
         }
     }

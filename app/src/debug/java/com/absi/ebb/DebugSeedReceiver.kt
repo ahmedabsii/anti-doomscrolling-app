@@ -25,6 +25,11 @@ class DebugSeedReceiver : BroadcastReceiver() {
                 )
                 Log.i(TAG, "group=$id")
             }
+            // Shows first-time setup again on the next open, keeping groups and history.
+            "setup" -> {
+                app.settings.onboarded = false
+                Log.i(TAG, "setup")
+            }
             "history" -> {
                 val group = app.store.groups().first()
                 val app0 = group.packages.first()
