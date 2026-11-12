@@ -168,7 +168,7 @@ fun EbbRoot(celebrate: Boolean) {
     }
 }
 
-/** The river and zen, quietly, while Lull is on screen. It stays silent while other audio is playing. */
+/** The river and zen, quietly, while Sip is on screen. It stays silent while other audio is playing. */
 @Composable
 private fun AppSound(on: Boolean) {
     val context = LocalContext.current
@@ -201,12 +201,12 @@ private fun WelcomeScreen(onNext: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(56.dp))
-            Text("lull", color = EbbColors.Text, style = EbbType.Hero, fontWeight = FontWeight.SemiBold)
+            Text("sip", color = EbbColors.Text, style = EbbType.Hero, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
             Text("The quiet between waves.", color = EbbColors.Soft, style = EbbType.Body)
             Spacer(Modifier.weight(1f))
             Text(
-                "Lull times your sessions, then lets the feed drift out with the tide until you're ready to come back.",
+                "Sip times your sessions, then lets the feed drift out with the tide until you're ready to come back.",
                 color = EbbColors.Text,
                 style = EbbType.Body,
                 textAlign = TextAlign.Center,
@@ -230,16 +230,16 @@ private fun PermissionScreen(onDone: () -> Unit) {
             Text("One permission keeps your sessions honest", color = EbbColors.Text, style = EbbType.Headline)
             PaperCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("What Lull sees", color = EbbColors.Text, style = EbbType.Title)
+                    Text("What Sip sees", color = EbbColors.Text, style = EbbType.Title)
                     Text(
-                        "Lull uses Android's Accessibility service to see which app is open, so it can time sessions " +
+                        "Sip uses Android's Accessibility service to see which app is open, so it can time sessions " +
                             "and cover an app when your time is up. For Instagram, it also checks which screen is " +
                             "open so your chats can stay free.",
                         color = EbbColors.Soft,
                         style = EbbType.Body,
                     )
                     Text(
-                        "It never reads or saves your messages. Your data stays on this phone, and Lull has no " +
+                        "It never reads or saves your messages. Your data stays on this phone, and Sip has no " +
                             "internet access.",
                         color = EbbColors.Soft,
                         style = EbbType.Body,
@@ -247,7 +247,7 @@ private fun PermissionScreen(onDone: () -> Unit) {
                 }
             }
             PaperCard(Modifier.fillMaxWidth()) {
-                SettingRow("I agree, turn on Lull", "Opens Android settings. Find Lull and switch it on.") {
+                SettingRow("I agree, turn on Sip", "Opens Android settings. Find Sip and switch it on.") {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
                     }
@@ -258,7 +258,7 @@ private fun PermissionScreen(onDone: () -> Unit) {
     }
 }
 
-/** Setup's second step: the permissions that keep Lull running on phones that save battery hard. */
+/** Setup's second step: the permissions that keep Sip running on phones that save battery hard. */
 @Composable
 private fun KeepRunningScreen(onDone: () -> Unit) {
     val context = LocalContext.current
@@ -272,9 +272,9 @@ private fun KeepRunningScreen(onDone: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Spacer(Modifier.height(40.dp))
-            Text("Keep Lull running", color = EbbColors.Text, style = EbbType.Headline)
+            Text("Keep Sip running", color = EbbColors.Text, style = EbbType.Headline)
             Text(
-                "Phones close apps in the background to save battery. Turn these on so Lull keeps timing your " +
+                "Phones close apps in the background to save battery. Turn these on so Sip keeps timing your " +
                     "sessions and covers apps on time. You can change them later in Settings.",
                 color = EbbColors.Soft,
                 style = EbbType.Body,
@@ -390,7 +390,7 @@ private fun HomeScreen(onOpenGroup: (Long?) -> Unit, onProgress: () -> Unit, tab
 
     TabbedScreen(Sea.MORNING, Tab.GROUPS, tabs) { scroll ->
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("lull", color = EbbColors.Text, style = EbbType.Value, fontWeight = FontWeight.SemiBold)
+            Text("sip", color = EbbColors.Text, style = EbbType.Value, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
             Box(Modifier.size(44.dp).clickable { onOpenGroup(null) }, contentAlignment = Alignment.Center) {
                 EbbIcon(Glyph.PLUS, EbbColors.Text, 26.dp)
@@ -398,7 +398,7 @@ private fun HomeScreen(onOpenGroup: (Long?) -> Unit, onProgress: () -> Unit, tab
         }
         if (!watcherOn) {
             PaperCard(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                SettingRow("Lull is switched off", "Blocking won't work until you turn it back on.") {
+                SettingRow("Sip is switched off", "Blocking won't work until you turn it back on.") {
                     context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 }
             }
@@ -626,7 +626,7 @@ private fun EbbField(value: String, hint: String, onChange: (String) -> Unit) {
     }
 }
 
-// What Lull suggests to someone new. The sliders mark these, and name them when they're picked.
+// What Sip suggests to someone new. The sliders mark these, and name them when they're picked.
 private const val RECOMMENDED_SESSION_MIN = 10
 private const val RECOMMENDED_COOLDOWN_MIN = 30
 
@@ -918,7 +918,7 @@ private fun Modifier.above(centreFraction: Float) = layout { measurable, constra
 
 private fun plural(count: Int, word: String) = if (count == 1) "1 $word" else "$count ${word}s"
 
-// Lull's words are all English, so its dates are too.
+// Sip's words are all English, so its dates are too.
 private fun dayName(day: Long, today: Long): String = when (day) {
     today -> "Today"
     today - 1 -> "Yesterday"
@@ -931,7 +931,7 @@ private fun dayLetter(day: Long): String = LocalDate.ofEpochDay(day).dayOfWeek.g
 private fun SettingsScreen(appSound: Boolean, onAppSound: (Boolean) -> Unit, tabs: (Tab) -> Unit) {
     val context = LocalContext.current
     val app = context.ebb
-    // Read again whenever Lull comes back, since each one is changed in Android's own settings.
+    // Read again whenever Sip comes back, since each one is changed in Android's own settings.
     var checks by remember { mutableIntStateOf(0) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { checks++ }
     val permissions = remember(checks) { permissionsOf(context) }
@@ -950,8 +950,8 @@ private fun SettingsScreen(appSound: Boolean, onAppSound: (Boolean) -> Unit, tab
         PaperCard(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Sound in Lull", color = EbbColors.Text, style = EbbType.Title)
-                    Text("The river and zen while Lull is open. Cooldown sounds are set in each group.", color = EbbColors.Muted, style = EbbType.Caption)
+                    Text("Sound in Sip", color = EbbColors.Text, style = EbbType.Title)
+                    Text("The river and zen while Sip is open. Cooldown sounds are set in each group.", color = EbbColors.Muted, style = EbbType.Caption)
                 }
                 Spacer(Modifier.width(12.dp))
                 Switch(checked = appSound, onCheckedChange = onAppSound, colors = ebbSwitchColors())
@@ -964,7 +964,7 @@ private fun SettingsScreen(appSound: Boolean, onAppSound: (Boolean) -> Unit, tab
     }
 }
 
-/** One permission Lull needs or works better with. [on] is null where Android can't tell. */
+/** One permission Sip needs or works better with. [on] is null where Android can't tell. */
 private data class Permission(val title: String, val detail: String, val on: Boolean?, val settings: Intent)
 
 private fun permissionsOf(context: Context): List<Permission> {
@@ -974,7 +974,7 @@ private fun permissionsOf(context: Context): List<Permission> {
     return listOf(
         Permission(
             "Blocking",
-            "Required. Lets Lull see which app is open, and cover it when time is up.",
+            "Required. Lets Sip see which app is open, and cover it when time is up.",
             context.isWatcherEnabled(),
             Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
         ),
@@ -986,7 +986,7 @@ private fun permissionsOf(context: Context): List<Permission> {
         ),
         Permission(
             "Run in the background",
-            "Stops Android closing Lull to save battery.",
+            "Stops Android closing Sip to save battery.",
             unrestricted,
             // Android only asks while it's off. Once on, the battery list is where it can be changed.
             if (unrestricted) {
@@ -1010,7 +1010,7 @@ private fun permissionsOf(context: Context): List<Permission> {
     )
 }
 
-/** Opens the page, or Lull's App info if this phone doesn't have that page. */
+/** Opens the page, or Sip's App info if this phone doesn't have that page. */
 private fun openSettings(context: Context, intent: Intent) {
     runCatching { context.startActivity(intent) }.onFailure {
         context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri()))

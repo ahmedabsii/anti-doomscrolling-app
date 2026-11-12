@@ -373,7 +373,7 @@ class AppWatcherService : AccessibilityService() {
 
     /**
      * Once a new day begins, looks back on the last day the watcher saw and records it if it was calm. Days it
-     * never saw, with the phone off or Lull switched off all day, earn no win. Only yesterday's win is announced.
+     * never saw, with the phone off or Sip switched off all day, earn no win. Only yesterday's win is announced.
      */
     private fun reviewLastDay() {
         val settings = app.settings

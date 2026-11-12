@@ -313,7 +313,7 @@ class EbbSettings(context: Context) {
         get() = prefs.getBoolean("onboarded", false)
         set(value) = prefs.edit { putBoolean("onboarded", value) }
 
-    /** The river and zen sound while Lull is open, and the chime on the celebration screen. */
+    /** The river and zen sound while Sip is open, and the chime on the celebration screen. */
     var appSound: Boolean
         get() = prefs.getBoolean("app_sound", true)
         set(value) = prefs.edit { putBoolean("app_sound", value) }

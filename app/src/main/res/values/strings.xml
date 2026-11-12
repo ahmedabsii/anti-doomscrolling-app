@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Lull</string>
-    <string name="watcher_description">Lets Lull see which app is open so it can time your sessions.</string>
+    <string name="app_name">Sip</string>
+    <string name="watcher_description">Lets Sip time your sessions and steadily and slowly help you get over your social media Addiction.</string>
 </resources>

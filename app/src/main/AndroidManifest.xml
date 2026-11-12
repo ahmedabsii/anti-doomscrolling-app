@@ -3,7 +3,7 @@
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Both are optional, and asked for from Settings: they keep phones that save battery hard from
-         closing Lull, and let the cover screen open over any app. -->
+         closing Sip, and let the cover screen open over any app. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
