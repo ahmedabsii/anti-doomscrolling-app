@@ -322,10 +322,15 @@ class EbbSettings(context: Context) {
         get() = prefs.getString("last_block_message", null)
         set(value) = prefs.edit { putString("last_block_message", value) }
 
-    /** The day today's emergency token was spent, on the stable clock. */
+    /** The last day an emergency token was spent, on the stable clock. */
     var emergencyTokenDay: Long
         get() = prefs.getLong("emergency_token_day", Long.MIN_VALUE)
         set(value) = prefs.edit { putLong("emergency_token_day", value) }
+
+    /** How many tokens were spent on [emergencyTokenDay]. Versions with one token a day didn't save it, so a spent day means one. */
+    var emergencyTokensUsed: Int
+        get() = prefs.getInt("emergency_tokens_used", 1)
+        set(value) = prefs.edit { putInt("emergency_tokens_used", value) }
 
     var lastReviewDay: Long
         get() = prefs.getLong("last_review_day", Long.MIN_VALUE)

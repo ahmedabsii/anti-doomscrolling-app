@@ -9,18 +9,29 @@ class InstagramScreensTest {
 
     private data class Recorded(val chats: Boolean, val screen: String, val ids: Set<String>)
 
-    // Screens recorded on a real phone. Only view names are in the file, never any text.
-    private val recorded = javaClass.getResource("/instagram-454-screens.txt")!!.readText().lines()
+    // Screens recorded on a real phone. Only view names are in the files, never any text.
+    private fun load(file: String) = javaClass.getResource(file)!!.readText().lines()
         .filter { it.isNotBlank() && !it.startsWith("#") }
         .map { line ->
             val (expected, screen, ids) = line.split(" | ")
             Recorded(expected == "chats", screen, ids.split(" ").toSet())
         }
 
+    private val recorded = load("/instagram-454-screens.txt")
+    private val camera = load("/instagram-455-camera.txt")
+
     @Test
     fun `every recorded screen is told apart correctly`() {
         assertEquals(9, recorded.size)
         recorded.forEach { (chats, screen, ids) ->
+            assertEquals(screen, chats, InstagramScreens.isChats { it in ids })
+        }
+    }
+
+    @Test
+    fun `the camera and a photo waiting to be sent stay free, and the feed doesn't`() {
+        assertEquals(5, camera.size)
+        camera.forEach { (chats, screen, ids) ->
             assertEquals(screen, chats, InstagramScreens.isChats { it in ids })
         }
     }

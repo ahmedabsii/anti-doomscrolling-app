@@ -50,12 +50,15 @@ class EbbApp : Application() {
         return StableClock.now(anchor, elapsed)
     }
 
-    /** One emergency token a day, back at local midnight. The stable clock keeps clock changes from bringing it back early. */
-    fun hasEmergencyToken(): Boolean = settings.emergencyTokenDay != tokenDay()
+    /** Emergency tokens left today. They come back at local midnight, and the stable clock keeps clock changes from bringing them back early. */
+    fun emergencyTokensLeft(): Int =
+        if (settings.emergencyTokenDay == tokenDay()) (EMERGENCY_TOKENS_A_DAY - settings.emergencyTokensUsed).coerceAtLeast(0) else EMERGENCY_TOKENS_A_DAY
 
     fun useEmergencyToken(): Boolean {
-        if (!hasEmergencyToken()) return false
-        settings.emergencyTokenDay = tokenDay()
+        if (emergencyTokensLeft() == 0) return false
+        val day = tokenDay()
+        settings.emergencyTokensUsed = if (settings.emergencyTokenDay == day) settings.emergencyTokensUsed + 1 else 1
+        settings.emergencyTokenDay = day
         return true
     }
 
@@ -67,11 +70,14 @@ class EbbApp : Application() {
     fun zoneOffsetMs(): Long = TimeZone.getDefault().getOffset(System.currentTimeMillis()).toLong()
 }
 
+/** How many emergency tokens each day brings. */
+const val EMERGENCY_TOKENS_A_DAY = 2
+
 /** The latest session state, shared from the watcher to any open screen. */
 object LiveSession {
     val states = MutableStateFlow<Map<Long, GroupState>>(emptyMap())
 
-    /** Groups a cover screen asks the watcher to open with today's emergency token. */
+    /** Groups a cover screen asks the watcher to open with one of today's emergency tokens. */
     val emergencyRequests = MutableSharedFlow<Long>(extraBufferCapacity = 1)
 }
 

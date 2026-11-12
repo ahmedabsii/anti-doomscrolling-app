@@ -24,8 +24,12 @@ object InstagramScreens {
         "row_thread_composer_edittext",
     )
 
+    // The camera, opened from a chat or from Instagram's main camera, and a photo taken in a chat before it's
+    // sent. Measured on Instagram 455. Nothing on them scrolls, so they count with the chats.
+    private val CAMERA = listOf("camera_shutter_button", "direct_send_controls_and_thumbnail_tray_container")
+
     fun viewId(name: String) = "$PACKAGE:id/$name"
 
-    /** Whether the screen is a chat, given a way to ask whether a view is on screen. */
-    fun isChats(shows: (String) -> Boolean): Boolean = REEL_PLAYER.none(shows) && CHATS.any(shows)
+    /** Whether the screen is a chat or the camera, given a way to ask whether a view is on screen. */
+    fun isChats(shows: (String) -> Boolean): Boolean = REEL_PLAYER.none(shows) && (CHATS.any(shows) || CAMERA.any(shows))
 }

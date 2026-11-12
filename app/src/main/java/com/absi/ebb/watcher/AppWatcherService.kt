@@ -58,6 +58,7 @@ class AppWatcherService : AccessibilityService() {
         watchFloatingWindows()
     }
     private var chatsShown: Boolean? = null
+    private var lookedAwayOnce = false
     private var arrivedInInstagram = false
     private var sentToChatsAt = 0L
     private val instagramCheck = Runnable { checkInstagram() }
@@ -262,7 +263,11 @@ class AppWatcherService : AccessibilityService() {
             }
             // Just sent to the chats: the feed can still be showing while the inbox loads, so wait for it.
             val waitingForChats = !inChats && SystemClock.elapsedRealtime() - sentToChatsAt < SEND_TO_CHATS_GRACE_MS
-            if (inChats != chatsShown && !waitingForChats) {
+            // Moving between a chat and its camera passes a moment that shows neither. Leaving the chats only
+            // counts when the next look agrees, so that moment never brings the cover.
+            val firstLookAway = !inChats && chatsShown == true && !lookedAwayOnce
+            lookedAwayOnce = firstLookAway
+            if (inChats != chatsShown && !waitingForChats && !firstLookAway) {
                 chatsShown = inChats
                 Log.i(TAG, "instagram chats=$inChats")
                 step { it.onForeground(InstagramScreens.PACKAGE, exempt = inChats, now = now()) }
@@ -272,7 +277,7 @@ class AppWatcherService : AccessibilityService() {
         handler.postDelayed(instagramCheck, INSTAGRAM_CHECK_MS)
     }
 
-    /** Spends today's token, if it's still there, to open a cooling group for a short while. */
+    /** Spends one of today's tokens, if any are left, to open a cooling group for a short while. */
     private fun openForEmergency(groupId: Long) {
         val current = engine ?: return
         if (!current.canOpenForEmergency(groupId, now()) || !app.useEmergencyToken()) return

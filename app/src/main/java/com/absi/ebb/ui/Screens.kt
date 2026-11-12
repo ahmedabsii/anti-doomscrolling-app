@@ -425,7 +425,7 @@ private fun HomeScreen(onOpenGroup: (Long?) -> Unit, onProgress: () -> Unit, tab
                 "Sessions" to sessions.toString(),
                 "Cooldowns" to cooldowns.toString(),
                 "Streak" to if (streak.current == 1) "1 day" else "${streak.current} days",
-                "Token" to if (app.hasEmergencyToken()) "1 left" else "Used",
+                "Tokens" to app.emergencyTokensLeft().let { if (it == 0) "Used" else "$it left" },
             ),
         )
         Spacer(Modifier.height(12.dp))

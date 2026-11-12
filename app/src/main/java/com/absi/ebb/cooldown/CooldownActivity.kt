@@ -82,8 +82,8 @@ class CooldownActivity : ComponentActivity() {
                 // The screens ask about the token each second, so a cover still up at midnight offers the new one.
                 when (val current = screen) {
                     is CoverScreen.Soothing ->
-                        SoothingScreen(current, ebb::hasEmergencyToken, ::openForEmergency, ::leave)
-                    is CoverScreen.Blocked -> BlockedScreen(current, ebb::hasEmergencyToken, ::openForEmergency, ::openChats, ::leave)
+                        SoothingScreen(current, ebb::emergencyTokensLeft, ::openForEmergency, ::leave)
+                    is CoverScreen.Blocked -> BlockedScreen(current, ebb::emergencyTokensLeft, ::openForEmergency, ::openChats, ::leave)
                     null -> Unit
                 }
             }
@@ -234,7 +234,7 @@ private const val SHORT_QUOTE_CHARS = 80
 @Composable
 private fun SoothingScreen(
     screen: CoverScreen.Soothing,
-    tokenLeft: () -> Boolean,
+    tokensLeft: () -> Int,
     onEmergency: (Long) -> Unit,
     onLeave: () -> Unit,
 ) {
@@ -274,7 +274,7 @@ private fun SoothingScreen(
             Spacer(Modifier.weight(1.3f))
             Text(if (breathingIn) "Breathe in" else "Breathe out", color = EbbColors.Soft, style = EbbType.Body)
             Spacer(Modifier.height(14.dp))
-            EmergencyToken(tokenLeft()) { onEmergency(screen.groupId) }
+            EmergencyToken(tokensLeft()) { onEmergency(screen.groupId) }
         }
         if (canClose) {
             Box(Modifier.align(Alignment.BottomCenter).systemBarsPadding()) { SwipeUpHint("Swipe up to close") }
@@ -347,11 +347,11 @@ private fun PillButton(label: String, onClick: () -> Unit) {
     }
 }
 
-/** Today's single way back in. The first tap asks again, so a stray touch can't spend it. */
+/** One of today's ways back in. The first tap asks again, so a stray touch can't spend a token. */
 @Composable
-private fun EmergencyToken(available: Boolean, onUse: () -> Unit) {
-    if (!available) {
-        Text("Token used \u00b7 a new one at midnight", color = EbbColors.Muted, style = EbbType.Caption)
+private fun EmergencyToken(left: Int, onUse: () -> Unit) {
+    if (left == 0) {
+        Text("Tokens used \u00b7 new ones at midnight", color = EbbColors.Muted, style = EbbType.Caption)
         return
     }
     var confirming by remember { mutableStateOf(false) }
@@ -376,14 +376,14 @@ private fun EmergencyToken(available: Boolean, onUse: () -> Unit) {
                 style = EbbType.Title,
             )
         }
-        Text("1 token left today", color = EbbColors.Muted, style = EbbType.Caption, modifier = Modifier.padding(top = 6.dp))
+        Text(if (left == 1) "1 token left today" else "$left tokens left today", color = EbbColors.Muted, style = EbbType.Caption, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
 @Composable
 private fun BlockedScreen(
     screen: CoverScreen.Blocked,
-    tokenLeft: () -> Boolean,
+    tokensLeft: () -> Int,
     onEmergency: (Long) -> Unit,
     onChats: () -> Unit,
     onLeave: () -> Unit,
@@ -409,7 +409,7 @@ private fun BlockedScreen(
                 PillButton("Back to chats", onChats)
                 Spacer(Modifier.height(16.dp))
             }
-            EmergencyToken(tokenLeft()) { onEmergency(screen.groupId) }
+            EmergencyToken(tokensLeft()) { onEmergency(screen.groupId) }
         }
         Box(Modifier.align(Alignment.BottomCenter).systemBarsPadding()) { SwipeUpHint("Swipe up to leave") }
     }
